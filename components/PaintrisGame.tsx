@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { COLS, ROWS, B, Engine, P, RGB, COLOR_NAMES, type EngineOpts, type Piece } from "@/lib/engine";
+import { COLS, ROWS, B, FALL_BASE, Engine, P, RGB, COLOR_NAMES, type EngineOpts, type Piece } from "@/lib/engine";
 import { createPixiRenderer, type PaintRenderer } from "@/lib/pixiRenderer";
 import {
   THEMES, PUZZLES, SCORE_TABS, TABLE_SIZE, defaultSave, loadSave, persistSave,
@@ -78,8 +78,8 @@ function rainbow(t: number): [number, number, number] {
 function engineOpts(setup: Setup): EngineOpts {
   switch (setup.mode) {
     case "classic": return { ramp: true };
-    case "zen": return { zen: true, baseSpeed: 1.36 };
-    case "rush": return { ramp: true, baseSpeed: 3.75 };
+    case "zen": return { zen: true, baseSpeed: FALL_BASE * 0.8 };
+    case "rush": return { ramp: true, baseSpeed: FALL_BASE * 2.2 };
     case "daily": return { ramp: true, seed: dailySeed() };
     case "puzzle": {
       const p = setup.puzzle!;
@@ -289,9 +289,10 @@ export default function PaintrisGame() {
     const pixels = new Uint8ClampedArray(COLS * ROWS * 4);
     let img: ImageData | null = null;
 
-    // per-cell brightness jitter for paint texture
+    // Per-cell brightness jitter for paint texture. Keep it subtle — too much
+    // and each simulation cell reads as a visible pixel.
     const noise = new Float32Array(COLS * ROWS);
-    for (let i = 0; i < noise.length; i++) noise[i] = 0.88 + Math.random() * 0.24;
+    for (let i = 0; i < noise.length; i++) noise[i] = 0.94 + Math.random() * 0.12;
 
     let raf = 0;
     let alive = true;

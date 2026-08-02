@@ -85,8 +85,10 @@ Purely cosmetic; they never change how the game plays.
 | `lib/meta.ts` | canvases, puzzles, save data |
 | `components/PaintrisGame.tsx` | compositing and UI |
 
-The playfield is 10 × 20 blocks, the classic proportion, at `14` simulation
-cells per block — a `140 × 280` grid. Pieces fall as rigid blocks, then
+The playfield is 10 × 20 blocks, the classic proportion, at `18` simulation
+cells per block — a `180 × 360` grid. `B` in `lib/engine.ts` is the single
+fidelity knob: every distance and speed derives from it, so raising it makes
+the paint finer without changing how the game plays. Pieces fall as rigid blocks, then
 dissolve into loose paint that the sand solver moves each frame — falling,
 flowing sideways, sticking, mixing, and pulling itself together by surface
 tension. A flood fill finds connected same-colour regions and pops any holding

@@ -7,9 +7,14 @@
 // up before you can build a colour zone worth clearing. Each block is B cells
 // on a side, giving the paint room to splash and pool. Constants further down
 // that depend on cell counts are tuned for this grid.
-export const B = 14; // grid cells per tetromino block edge
+// B is the one knob for fidelity: cells per block edge. Everything below that
+// is a distance or a speed is expressed as a multiple of it, so raising B
+// makes the paint finer without changing how the game plays.
+export const B = 18; // grid cells per tetromino block edge
 export const COLS = B * 10;
 export const ROWS = B * 20;
+
+export const FALL_BASE = B * 0.121; // cells per frame at normal gravity
 
 export enum P {
   Empty = 0,
@@ -34,20 +39,34 @@ export enum P {
 // fall: chance to fall an extra cell per step (density)
 // flow: chance to flow sideways when resting on paint (wateriness)
 // stick: chance to refuse to move at all (stickiness)
-const PROPS: Record<number, { fall: number; flow: number; stick: number }> = {
-  [P.Red]: { fall: 0.8, flow: 0.1, stick: 0 },
-  [P.Blue]: { fall: 0.3, flow: 0.85, stick: 0 },
-  [P.Yellow]: { fall: 0.15, flow: 0.45, stick: 0 },
-  [P.Green]: { fall: 0.3, flow: 0.05, stick: 0.35 },
-  [P.Black]: { fall: 0.95, flow: 0.02, stick: 0.1 },
-  [P.Purple]: { fall: 0.5, flow: 0.3, stick: 0 },
-  [P.Orange]: { fall: 0.4, flow: 0.35, stick: 0 },
-  [P.White]: { fall: 0.3, flow: 0.5, stick: 0 },
-  [P.Rainbow]: { fall: 0.4, flow: 0.5, stick: 0 },
-  [P.Magnetic]: { fall: 0.5, flow: 0.05, stick: 0.3 },
-  [P.Hot]: { fall: 0.7, flow: 0.15, stick: 0 },
-  [P.Mirror]: { fall: 0.4, flow: 0.3, stick: 0 },
-};
+// Flat arrays indexed by colour rather than an object map: this is read for
+// every painted cell every frame, and a keyed lookup there is the single
+// hottest cost in the simulation.
+const FALL = new Float32Array(24);
+const FLOW = new Float32Array(24);
+const STICK = new Float32Array(24);
+{
+  const props: [number, number, number, number][] = [
+    // colour, fall, flow, stick
+    [P.Red, 0.8, 0.1, 0],
+    [P.Blue, 0.3, 0.85, 0],
+    [P.Yellow, 0.15, 0.45, 0],
+    [P.Green, 0.3, 0.05, 0.35],
+    [P.Black, 0.95, 0.02, 0.1],
+    [P.Purple, 0.5, 0.3, 0],
+    [P.Orange, 0.4, 0.35, 0],
+    [P.White, 0.3, 0.5, 0],
+    [P.Rainbow, 0.4, 0.5, 0],
+    [P.Magnetic, 0.5, 0.05, 0.3],
+    [P.Hot, 0.7, 0.15, 0],
+    [P.Mirror, 0.4, 0.3, 0],
+  ];
+  for (const [c, fall, flow, stick] of props) {
+    FALL[c] = fall;
+    FLOW[c] = flow;
+    STICK[c] = stick;
+  }
+}
 
 export const RGB: Record<number, [number, number, number]> = {
   [P.Red]: [229, 52, 74],
@@ -150,9 +169,12 @@ const FLOOD_TO = 0.88; // ...and where it bottoms out
 const DROWNING = 0.78;
 const CLEAR_ANIM = 32; // frames of glow before removal
 const COMBO_WINDOW = 300; // frames between clears that keep a combo alive
-const BOOM_RADIUS = 34;
-const PULSE_RADIUS = 27; // white push / magnetic pull
-const MIN_PAINT_FOR_TARGETS = 7100; // coverage goals need a real painting first
+const BOOM_RADIUS = Math.round(B * 2.43);
+const PULSE_RADIUS = Math.round(B * 1.93); // white push / magnetic pull
+const MIN_PAINT_FOR_TARGETS = COLS * ROWS * 0.18; // goals need a real painting
+const SOFT_DROP = B * 0.79; // cells per frame while held
+const SLIDE = Math.max(2, Math.round(B * 0.214)); // cells per frame sideways
+const OVERLAP_SLACK = Math.round(B * B * 0.046); // stray cells a piece plows through
 // Canvas-full backstop, measured as the share of COLUMNS whose top two rows
 // hold paint. Counting cells instead would miss a narrow tower that reaches
 // the ceiling in only a few columns.
@@ -296,8 +318,8 @@ export class Engine {
   }
 
   private speed(): number {
-    let s = this.opts.baseSpeed ?? 1.7;
-    if (this.opts.ramp) s += Math.min(3.4, this.piecesUsed * 0.03);
+    let s = this.opts.baseSpeed ?? FALL_BASE;
+    if (this.opts.ramp) s += Math.min(FALL_BASE * 2, this.piecesUsed * FALL_BASE * 0.0176);
     return s;
   }
 
@@ -312,7 +334,7 @@ export class Engine {
       for (let y = Math.max(0, y0); y < y0 + B; y++) {
         const row = y * COLS;
         for (let x = x0; x < x0 + B; x++) {
-          if (this.grid[row + x] !== P.Empty && ++overlap > 9) return true;
+          if (this.grid[row + x] !== P.Empty && ++overlap > OVERLAP_SLACK) return true;
         }
       }
     }
@@ -495,11 +517,11 @@ export class Engine {
 
     if (!this.ended && this.piece) {
       if (this.moveDir !== 0) {
-        for (let k = 0; k < 3; k++) {
+        for (let k = 0; k < SLIDE; k++) {
           if (!this.collides(this.piece, this.moveDir, 0)) this.piece.x += this.moveDir;
         }
       }
-      this.fallAcc += this.softDrop ? 11 : this.speed();
+      this.fallAcc += this.softDrop ? SOFT_DROP : this.speed();
       let fall = this.fallAcc | 0;
       this.fallAcc -= fall;
       let moved = 0;
@@ -626,19 +648,17 @@ export class Engine {
           }
         }
 
-        const props = PROPS[c];
-
         if (g[below] === P.Empty) {
           g[below] = c;
           g[i] = P.Empty;
           // dense paint drops an extra cell
-          if (this.rnd() < props.fall && y + 2 < ROWS && g[below + COLS] === P.Empty) {
+          if (this.rnd() < FALL[c] && y + 2 < ROWS && g[below + COLS] === P.Empty) {
             g[below + COLS] = c;
             g[below] = P.Empty;
           }
           continue;
         }
-        if (this.rnd() < props.stick) continue;
+        if (this.rnd() < STICK[c]) continue;
 
         // Slide down slopes when the diagonal is clear. Requiring the cell
         // beside it to be clear too would hold paint at a steep angle, and
@@ -653,7 +673,7 @@ export class Engine {
         }
 
         // watery colours creep sideways across surfaces
-        if (this.rnd() < props.flow) {
+        if (this.rnd() < FLOW[c]) {
           const dir = this.rnd() < 0.5 ? -1 : 1;
           const nx = x + dir;
           if (nx >= 0 && nx < COLS && g[row + nx] === P.Empty) {
