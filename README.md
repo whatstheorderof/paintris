@@ -35,7 +35,13 @@ Touch controls appear on mobile.
 ## How it plays
 
 Drop paint, build big connected areas of a single colour, and they glow, bubble
-and pop. Chained pops build a combo — four in a row is a **PAINTSTORM**.
+and pop. If a pop sets off another, the chain counts — two is a double, four or
+more is a **PAINTSTORM** — and the chain number multiplies the points. One
+landing, one chain, so a storm always means that drop caused it.
+
+Sound comes in packs: **Paint Studio** for wet splats, or **Zen Garden**, which
+swaps every voice for pentatonic wind chimes over a soft drone and pairs well
+with Zen mode and the **Calm motion** setting.
 
 Colours mix where they touch:
 
@@ -63,6 +69,8 @@ bridge holes. Black is dense and makes a good blocker. Yellow is light.
 ### Modes
 
 - **Classic** — endless, speeds up as you go
+- **Levels** — climb numbered levels by hitting score targets, each one
+  pouring a little faster
 - **Zen** — no losing, slower pour, just paint
 - **Rush** — everything falls more than twice as fast
 - **Daily** — everyone gets the same piece sequence for the day

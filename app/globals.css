@@ -317,6 +317,43 @@ body {
 .setting-text small { font-size: 10px; opacity: 0.6; }
 .setting-go { font-size: 20px; opacity: 0.5; }
 
+.setting-block {
+  background: rgba(127, 127, 127, 0.14);
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  text-align: left;
+}
+
+.pack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pack {
+  font: inherit;
+  color: inherit;
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0.65;
+}
+
+.pack:hover { opacity: 0.9; }
+.pack.on { opacity: 1; border-color: currentColor; background: rgba(127, 127, 127, 0.26); }
+.pack-name { font-family: var(--display); font-size: 11px; letter-spacing: 0.5px; }
+.pack small { font-size: 9px; opacity: 0.7; }
+
 .toggle {
   width: 44px;
   height: 24px;

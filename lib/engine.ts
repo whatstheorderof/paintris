@@ -145,12 +145,14 @@ export interface EngineOpts {
   zen?: boolean; // canvas never fills
   baseSpeed?: number; // piece gravity, cells per frame
   ramp?: boolean; // speed up as pieces are used
+  levels?: boolean; // climb numbered levels by hitting score targets
+  calm?: boolean; // softer splashes and far fewer sparks
   budget?: number; // piece limit (puzzle mode)
   targets?: { color: number; pct: number }[]; // colour coverage goals
   plainPieces?: boolean; // no special paints (puzzle mode)
 }
 
-export type EngineEvent = "land" | "clear" | "boom" | "over" | "win";
+export type EngineEvent = "land" | "clear" | "boom" | "over" | "win" | "level";
 
 // With hold + landing preview, deliberate play makes zones easy to build —
 // a higher pop threshold keeps clears feeling earned.
@@ -167,8 +169,12 @@ const FLOOD_TO = 0.88; // ...and where it bottoms out
 // board fragments into ever-smaller zones, so easing the bar alone can chase
 // a target it never catches and the game deadlocks.
 const DROWNING = 0.78;
+const LEVEL_STEP = 4000; // score for level 2; each level after costs more
 const CLEAR_ANIM = 32; // frames of glow before removal
-const COMBO_WINDOW = 300; // frames between clears that keep a combo alive
+// A chain is one landing setting off a cascade, not "clears that happened to
+// land near each other in time". Holding soft drop used to keep a combo alive
+// forever simply by clearing often, which made PAINTSTORM meaningless.
+const COMBO_WINDOW = 120; // frames a cascade may pause before the chain ends
 const BOOM_RADIUS = Math.round(B * 2.43);
 const PULSE_RADIUS = Math.round(B * 1.93); // white push / magnetic pull
 const MIN_PAINT_FOR_TARGETS = COLS * ROWS * 0.18; // goals need a real painting
@@ -213,11 +219,15 @@ export class Engine {
   piecesUsed = 0;
   fill = 0; // fraction of the canvas covered in paint
   flooding = false; // canvas crowded enough that paint is running
+  level = 1;
+  levelFrom = 0; // score at which this level started
+  levelAt = LEVEL_STEP; // score that reaches the next level
+
   progress: { color: number; pct: number; target: number }[] = [];
   onEvent: (e: EngineEvent, n?: number) => void = () => {};
 
   private rnd: () => number;
-  private opts: EngineOpts;
+  readonly opts: EngineOpts;
   private fallAcc = 0;
   private settleTimer = -1; // countdown after the piece budget runs out
 
@@ -319,8 +329,18 @@ export class Engine {
 
   private speed(): number {
     let s = this.opts.baseSpeed ?? FALL_BASE;
-    if (this.opts.ramp) s += Math.min(FALL_BASE * 2, this.piecesUsed * FALL_BASE * 0.0176);
+    // Gentler than it was: reaches about 1.7x around eighty pieces rather
+    // than running away inside a single short game.
+    if (this.opts.ramp) s += Math.min(FALL_BASE * 1.2, this.piecesUsed * FALL_BASE * 0.009);
+    if (this.opts.levels) s += Math.min(FALL_BASE * 1.6, (this.level - 1) * FALL_BASE * 0.11);
     return s;
+  }
+
+  /** Stop play without the "you topped out" framing — used when the player
+   *  walks away. Paint keeps flowing as a backdrop, but nothing scores. */
+  finish() {
+    this.gameOver = true;
+    this.piece = null;
   }
 
   // Walls and floor are hard; a few stray paint cells are not — wet paint
@@ -387,6 +407,12 @@ export class Engine {
       return;
     }
 
+    // A chain belongs to exactly one landing, so a combo always means "this
+    // drop set off that much". Keeping the chain alive while clears merely
+    // kept happening let a held soft drop run a permanent PAINTSTORM.
+    this.combo = 0;
+    this.comboTimer = 0;
+
     if (p.color === P.Explosive) {
       this.explode(p);
       return;
@@ -416,7 +442,7 @@ export class Engine {
           // splash: some particles spray sideways as the wet paint hits
           let tx = x;
           let ty = y;
-          if (this.rnd() < 0.06) {
+          if (this.rnd() < (this.opts.calm ? 0.02 : 0.06)) {
             tx = x + ((this.rnd() * 5) | 0) - 2;
             ty = y + ((this.rnd() * 3) | 0) - 1;
           }
@@ -482,13 +508,16 @@ export class Engine {
 
   private burstSparks(cx: number, cy: number, color: number, n: number) {
     if (this.sparks.length > 2200) return; // GPU draws them, CPU still moves them
-    for (let k = 0; k < n; k++) {
+    const calm = this.opts.calm;
+    const count = calm ? Math.ceil(n * 0.28) : n;
+    for (let k = 0; k < count; k++) {
       const a = this.rnd() * Math.PI * 2;
-      const v = 0.5 + this.rnd() * 1.5;
+      // calm sparks drift rather than fly, and linger longer
+      const v = (0.5 + this.rnd() * 1.5) * (calm ? 0.45 : 1);
       this.sparks.push({
         x: cx, y: cy,
-        vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.8,
-        life: 20 + this.rnd() * 25, color,
+        vx: Math.cos(a) * v, vy: Math.sin(a) * v - (calm ? 0.3 : 0.8),
+        life: (20 + this.rnd() * 25) * (calm ? 1.5 : 1), color,
       });
     }
   }
@@ -560,6 +589,14 @@ export class Engine {
     if (this.comboTimer > 0) this.comboTimer--;
     else this.combo = 0;
     if (this.comboFlash > 0) this.comboFlash--;
+
+    // levels: each target reached raises the level and the pour speed
+    if (this.opts.levels && !this.ended && this.score >= this.levelAt) {
+      this.level++;
+      this.levelFrom = this.levelAt;
+      this.levelAt += LEVEL_STEP + this.level * 1200;
+      this.onEvent("level", this.level);
+    }
 
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const s = this.sparks[i];
@@ -799,6 +836,7 @@ export class Engine {
     this.comboTimer = COMBO_WINDOW;
     this.comboFlash = 120;
     this.lastClearSize = zone.length;
+
     this.score += zone.length * this.combo;
     this.burstSparks(zone[0] % COLS, (zone[0] / COLS) | 0, color, 140);
   }

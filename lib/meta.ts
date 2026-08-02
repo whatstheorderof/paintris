@@ -1,6 +1,7 @@
 // Themes, puzzle levels, and persistent progression (localStorage).
 
 import { P } from "./engine";
+import type { PackId } from "./sfx";
 
 export interface Theme {
   id: string;
@@ -103,7 +104,9 @@ export interface SaveData {
   /** Top scores per mode key, highest first. */
   scores: Record<string, ScoreEntry[]>;
   puzzlesDone: number[];
-  sound: boolean;
+  sound: boolean; // kept so older saves still round-trip
+  soundPack: PackId;
+  reducedMotion: boolean; // calmer splashes and sparks
 }
 
 export const TABLE_SIZE = 5; // entries kept per mode
@@ -128,6 +131,7 @@ export function withScore(
 /** Modes shown on the high score board, in order. */
 export const SCORE_TABS: { key: string; label: string }[] = [
   { key: "classic", label: "CLASSIC" },
+  { key: "levels", label: "LEVELS" },
   { key: "rush", label: "RUSH" },
   { key: "zen", label: "ZEN" },
   { key: "daily", label: "DAILY" },
@@ -144,6 +148,8 @@ export function defaultSave(): SaveData {
     scores: {},
     puzzlesDone: [],
     sound: true,
+    soundPack: "studio",
+    reducedMotion: false,
   };
 }
 
@@ -154,6 +160,8 @@ export function loadSave(): SaveData {
     const raw = localStorage.getItem(KEY);
     if (!raw) return base;
     const save: SaveData = { ...base, ...JSON.parse(raw) };
+    // saves from before sound packs only had an on/off flag
+    if (!save.soundPack) save.soundPack = save.sound === false ? "off" : "studio";
     // Saves from before the score board only kept a single number per mode;
     // seed the table from those so old bests still show up.
     for (const [key, score] of Object.entries(save.best ?? {})) {

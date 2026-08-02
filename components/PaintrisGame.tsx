@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { COLS, ROWS, B, FALL_BASE, Engine, P, RGB, COLOR_NAMES, type EngineOpts, type Piece } from "@/lib/engine";
 import { createPixiRenderer, type PaintRenderer } from "@/lib/pixiRenderer";
+import { Sfx, PACKS, type PackId } from "@/lib/sfx";
 import {
   THEMES, PUZZLES, SCORE_TABS, TABLE_SIZE, defaultSave, loadSave, persistSave,
   dailySeed, dailyKey, qualifies, withScore,
@@ -14,56 +15,15 @@ const SCALE = 4; // canvas pixels per grid cell, before device pixel ratio
 type Screen = "menu" | "themes" | "puzzles" | "settings" | "scores" | "play" | "name" | "over";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -!";
-type Mode = "classic" | "zen" | "rush" | "daily" | "puzzle";
+
+// One landing, one chain. Each further pop in the same cascade steps up.
+const COMBO_NAME = ["SPLASH", "DOUBLE SPLASH", "TRIPLE SPLASH", "PAINTSTORM", "PAINTSTORM"];
+type Mode = "classic" | "levels" | "zen" | "rush" | "daily" | "puzzle";
 type EndKind = "win" | "lose" | "full" | "end";
 
 interface Setup {
   mode: Mode;
   puzzle?: PuzzleDef;
-}
-
-// Cheap synth splashes; created lazily on first user gesture.
-class Sfx {
-  ctx: AudioContext | null = null;
-  muted = false;
-  ensure() {
-    if (this.muted) return;
-    if (!this.ctx) this.ctx = new AudioContext();
-    if (this.ctx.state === "suspended") this.ctx.resume();
-  }
-  private noise(dur: number, freq: number, gain: number) {
-    if (!this.ctx || this.muted) return;
-    const ctx = this.ctx;
-    const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const f = ctx.createBiquadFilter();
-    f.type = "lowpass";
-    f.frequency.value = freq;
-    const g = ctx.createGain();
-    g.gain.value = gain;
-    src.connect(f).connect(g).connect(ctx.destination);
-    src.start();
-  }
-  land() { this.noise(0.15, 900, 0.25); }
-  boom() { this.noise(0.5, 250, 0.5); }
-  chime(steps: number) {
-    if (!this.ctx || this.muted) return;
-    const ctx = this.ctx;
-    for (let k = 0; k < steps; k++) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = 400 * Math.pow(1.25, k);
-      g.gain.setValueAtTime(0.12, ctx.currentTime + k * 0.07);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + k * 0.07 + 0.3);
-      o.connect(g).connect(ctx.destination);
-      o.start(ctx.currentTime + k * 0.07);
-      o.stop(ctx.currentTime + k * 0.07 + 0.35);
-    }
-  }
 }
 
 function rainbow(t: number): [number, number, number] {
@@ -78,6 +38,7 @@ function rainbow(t: number): [number, number, number] {
 function engineOpts(setup: Setup): EngineOpts {
   switch (setup.mode) {
     case "classic": return { ramp: true };
+    case "levels": return { levels: true, baseSpeed: FALL_BASE * 0.85 };
     case "zen": return { zen: true, baseSpeed: FALL_BASE * 0.8 };
     case "rush": return { ramp: true, baseSpeed: FALL_BASE * 2.2 };
     case "daily": return { ramp: true, seed: dailySeed() };
@@ -89,7 +50,8 @@ function engineOpts(setup: Setup): EngineOpts {
 }
 
 const MODE_LABEL: Record<Mode, string> = {
-  classic: "CLASSIC", zen: "ZEN", rush: "RUSH", daily: "DAILY", puzzle: "PUZZLE",
+  classic: "CLASSIC", levels: "LEVELS", zen: "ZEN", rush: "RUSH",
+  daily: "DAILY", puzzle: "PUZZLE",
 };
 
 export default function PaintrisGame() {
@@ -120,12 +82,14 @@ export default function PaintrisGame() {
     }
     persistSave(save);
   }, [save]);
-  const [hud, setHud] = useState({
+  const emptyHud = {
     score: 0, combo: 0, flash: 0,
     piecesLeft: null as number | null,
     flooding: false,
+    level: 0, levelPct: 0,
     progress: [] as { color: number; pct: number; target: number }[],
-  });
+  };
+  const [hud, setHud] = useState(emptyHud);
   const [result, setResult] = useState<{ kind: EndKind; score: number; earned: number; best: number }>({
     kind: "end", score: 0, earned: 0, best: 0,
   });
@@ -139,17 +103,19 @@ export default function PaintrisGame() {
   const themeRef = useRef(theme);
   themeRef.current = theme;
 
-  // Keep the audio engine in step with the saved preference, and play one
-  // splash when it's switched back on so you hear what you enabled.
-  const prevSound = useRef<boolean | null>(null);
+  // Keep the audio engine in step with the saved pack, and play one sound on
+  // change so you hear what you picked.
+  const prevPack = useRef<PackId | null>(null);
   useEffect(() => {
-    sfxRef.current.muted = !save.sound;
-    if (prevSound.current === false && save.sound) {
-      sfxRef.current.ensure();
-      sfxRef.current.land();
+    const sfx = sfxRef.current;
+    sfx.pack = save.soundPack;
+    if (save.soundPack !== "off") {
+      sfx.ensure();
+      if (prevPack.current !== null) sfx.land();
     }
-    prevSound.current = save.sound;
-  }, [save.sound]);
+    sfx.setAmbience(save.soundPack === "zen" && screenRef.current === "play");
+    prevPack.current = save.soundPack;
+  }, [save.soundPack]);
 
   const setScreen = (s: Screen) => {
     screenRef.current = s;
@@ -173,6 +139,11 @@ export default function PaintrisGame() {
     if (screenRef.current !== "play") return;
     const e = engineRef.current;
     if (!e) return;
+    // Stop the run for good. Without this the engine kept spawning and
+    // scoring in the background after you walked away, and the panel counter
+    // carried on climbing on the menu.
+    e.finish();
+    sfxRef.current.setAmbience(false);
     const setup = setupRef.current;
     const puzzleId = setup.puzzle?.id;
     const firstClear = kind === "win" && puzzleId != null && !save.puzzlesDone.includes(puzzleId);
@@ -207,21 +178,27 @@ export default function PaintrisGame() {
   const startGame = (setup: Setup) => {
     sfxRef.current.ensure();
     setupRef.current = setup;
-    const e = new Engine(engineOpts(setup));
+    const e = new Engine({ ...engineOpts(setup), calm: save.reducedMotion });
     e.onEvent = (ev) => {
       if (ev === "land") sfxRef.current.land();
       if (ev === "boom") sfxRef.current.boom();
-      if (ev === "clear") sfxRef.current.chime(3 + e.combo);
-      if (ev === "win") { sfxRef.current.chime(8); endGameRef.current("win"); }
+      if (ev === "clear") sfxRef.current.clear(3 + e.combo);
+      if (ev === "level") sfxRef.current.level();
+      if (ev === "win") { sfxRef.current.clear(8); endGameRef.current("win"); }
       if (ev === "over") endGameRef.current(setupRef.current.mode === "puzzle" ? "lose" : "full");
     };
     e.spawn();
     engineRef.current = e;
     if (typeof window !== "undefined") (window as unknown as { __paintris: Engine }).__paintris = e;
+    sfxRef.current.setAmbience(save.soundPack === "zen");
     setScreen("play");
   };
 
-  const toggleSound = () => updateSave((prev) => ({ ...prev, sound: !prev.sound }));
+  const setPack = (pack: PackId) => updateSave((prev) => ({ ...prev, soundPack: pack }));
+  const cyclePack = () => {
+    const i = PACKS.findIndex((p) => p.id === save.soundPack);
+    setPack(PACKS[(i + 1) % PACKS.length].id);
+  };
 
   // slotRef is the immediate source of truth: consecutive keystrokes land in
   // consecutive slots even if React hasn't re-rendered between them.
@@ -325,6 +302,10 @@ export default function PaintrisGame() {
         setHud({
           score: e.score, combo: e.combo, flash: e.comboFlash,
           piecesLeft: e.piecesLeft, flooding: e.flooding, progress: e.progress,
+          level: e.opts.levels ? e.level : 0,
+          levelPct: e.opts.levels
+            ? Math.max(0, Math.min(100, ((e.score - e.levelFrom) / (e.levelAt - e.levelFrom)) * 100))
+            : 0,
         });
       }
     }, 1000 / 60);
@@ -562,7 +543,7 @@ export default function PaintrisGame() {
 
         {playing && hud.flash > 0 && hud.combo > 0 && (
           <div className="combo" key={hud.combo}>
-            {hud.combo >= 4 ? "PAINTSTORM" : "SPLASH"}
+            {COMBO_NAME[Math.min(hud.combo, COMBO_NAME.length) - 1]}
             {hud.combo > 1 && <span> x{hud.combo}</span>}
           </div>
         )}
@@ -574,6 +555,7 @@ export default function PaintrisGame() {
             <div className="menu-modes">
               {([
                 ["classic", "CLASSIC", "endless · speeds up", "classic"],
+                ["levels", "LEVELS", "climb the ranks", "levels"],
                 ["zen", "ZEN", "no losing · just paint", "zen"],
                 ["rush", "RUSH", "twice the pour", "rush"],
                 ["daily", "DAILY", "same paint for everyone", dailyKey()],
@@ -601,7 +583,7 @@ export default function PaintrisGame() {
                 🎨 CANVAS<small>change background</small>
               </button>
               <button className="side-btn" onClick={() => setScreen("settings")}>
-                ⚙ SETTINGS<small>sound {save.sound ? "on" : "off"}</small>
+                ⚙ SETTINGS<small>{PACKS.find((p) => p.id === save.soundPack)?.name.toLowerCase()}</small>
               </button>
             </div>
             <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
@@ -683,10 +665,28 @@ export default function PaintrisGame() {
           <div className="overlay" style={{ background: theme.overlay }}>
             <h1 className="title small">SETTINGS</h1>
             <div className="settings-list">
-              <button className={`setting-row${save.sound ? " on" : ""}`} onClick={toggleSound}>
+              <div className="setting-block">
+                <span className="setting-name">🔊 Sound</span>
+                <div className="pack-list">
+                  {PACKS.map((p) => (
+                    <button
+                      key={p.id}
+                      className={`pack${save.soundPack === p.id ? " on" : ""}`}
+                      onClick={() => setPack(p.id)}
+                    >
+                      <span className="pack-name">{p.name}</span>
+                      <small>{p.blurb}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                className={`setting-row${save.reducedMotion ? " on" : ""}`}
+                onClick={() => updateSave((prev) => ({ ...prev, reducedMotion: !prev.reducedMotion }))}
+              >
                 <span className="setting-text">
-                  <span className="setting-name">{save.sound ? "🔊" : "🔇"} Sound</span>
-                  <small>splashes, booms and combo chimes</small>
+                  <span className="setting-name">🍃 Calm motion</span>
+                  <small>gentler splashes, fewer sparks</small>
                 </span>
                 <span className="toggle" aria-hidden>
                   <span className="knob" />
@@ -774,7 +774,7 @@ export default function PaintrisGame() {
               }}>
                 🏆 SCORES
               </button>
-              <button className="play ghost" onClick={() => setScreen("menu")}>MENU</button>
+              <button className="play ghost" onClick={() => { engineRef.current = null; setHud(emptyHud); setScreen("menu"); }}>MENU</button>
             </div>
             <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
               a game by zaney.dev
@@ -798,6 +798,14 @@ export default function PaintrisGame() {
             <canvas ref={holdRef} width={64} height={40} />
           </div>
         </div>
+        {hud.level > 0 && (playing || screen === "over") && (
+          <div className="stat">
+            <label>LEVEL {hud.level}</label>
+            <div className="bar">
+              <span style={{ width: `${hud.levelPct}%`, background: "currentColor" }} />
+            </div>
+          </div>
+        )}
         {hud.piecesLeft != null && playing && (
           <div className="stat">
             <label>PIECES LEFT</label>
@@ -835,7 +843,11 @@ export default function PaintrisGame() {
 
         <div className="box">
           <h3 className="box-title">HOW TO SCORE</h3>
-          <p className="box-line">Big connected areas of one colour pop.</p>
+          <p className="box-line">
+            Big connected areas of one colour pop. If that pop makes another,
+            the chain counts: 2 is a double, 4+ is a <b>PAINTSTORM</b>, and the
+            chain number multiplies the points. One landing, one chain.
+          </p>
           <ul className="recipes">
             <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#2f7fe8" }} />=<i style={{ background: "#9b4fd6" }} /> purple</li>
             <li><i style={{ background: "#2f7fe8" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#3ec96e" }} /> green</li>
@@ -856,8 +868,9 @@ export default function PaintrisGame() {
           </div>
         </div>
         <div className="panel-actions">
-          <button className="endbtn" onClick={toggleSound} title="Toggle sound">
-            {save.sound ? "🔊 sound on" : "🔇 sound off"}
+          <button className="endbtn" onClick={cyclePack} title="Change sound pack">
+            {save.soundPack === "off" ? "🔇" : save.soundPack === "zen" ? "🎐" : "🔊"}{" "}
+            {PACKS.find((p) => p.id === save.soundPack)?.name.toLowerCase()}
           </button>
           {playing && (
             <button className="endbtn" onClick={() => endGameRef.current("end")}>■ end session</button>
