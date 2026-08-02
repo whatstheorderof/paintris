@@ -139,7 +139,7 @@ body {
 
 .mode-btn:hover { background: rgba(127, 127, 127, 0.26); }
 
-.swatches {
+.menu-secondary {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
@@ -147,35 +147,148 @@ body {
   max-width: 330px;
 }
 
+.side-btn {
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  font-weight: bold;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px dashed rgba(127, 127, 127, 0.5);
+  border-radius: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.side-btn small {
+  font-size: 10px;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+  opacity: 0.65;
+}
+
+.side-btn:hover { background: rgba(127, 127, 127, 0.18); }
+
+.drops-line { font-weight: bold; opacity: 0.9; }
+
+.swatches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  max-width: 340px;
+}
+
 .swatch {
   font: inherit;
   color: inherit;
   background: rgba(127, 127, 127, 0.14);
-  border: 1px solid rgba(127, 127, 127, 0.35);
-  border-radius: 10px;
-  padding: 8px 10px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 8px;
   cursor: pointer;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 7px;
   text-align: left;
 }
 
 .swatch:hover { background: rgba(127, 127, 127, 0.26); }
-.swatch.selected { border-color: currentColor; }
-.swatch.locked { opacity: 0.55; cursor: not-allowed; }
+.swatch.selected { border-color: currentColor; background: rgba(127, 127, 127, 0.26); }
+.swatch.locked { opacity: 0.5; cursor: not-allowed; }
 
+/* preview of the actual canvas, with sample paint sitting on it */
 .swatch .chip {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  height: 44px;
+  border-radius: 8px;
   border: 1px solid;
-  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  padding-bottom: 7px;
 }
 
-.swatch-name { font-size: 11px; font-weight: bold; letter-spacing: 0.5px; }
-.swatch small { font-size: 9px; opacity: 0.65; display: block; }
-.swatch .swatch-name + small { margin-left: auto; }
+.swatch .chip i {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: block;
+}
+
+.swatch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.swatch-name { font-size: 11px; font-weight: bold; letter-spacing: 0.3px; }
+
+.swatch-status {
+  font-size: 9px;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.swatch-status.on { opacity: 1; font-weight: bold; }
+.swatch-status.cost { opacity: 0.85; }
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 330px;
+}
+
+.setting-row {
+  font: inherit;
+  color: inherit;
+  background: rgba(127, 127, 127, 0.14);
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.setting-row:hover { background: rgba(127, 127, 127, 0.26); }
+
+.setting-text { display: flex; flex-direction: column; gap: 3px; }
+.setting-name { font-size: 13px; font-weight: bold; letter-spacing: 0.5px; }
+.setting-text small { font-size: 10px; opacity: 0.6; }
+.setting-go { font-size: 20px; opacity: 0.5; }
+
+.toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.4);
+  flex-shrink: 0;
+  padding: 3px;
+  transition: background 0.2s ease;
+}
+
+.setting-row.on .toggle { background: #3ec96e; }
+
+.knob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+
+.setting-row.on .knob { transform: translateX(20px); }
 
 .combo {
   position: absolute;
@@ -244,10 +357,83 @@ body {
   transition: width 0.3s ease;
 }
 
-.help {
-  font-size: 11px;
-  line-height: 1.7;
+.box {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.box-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: bold;
   opacity: 0.55;
+  margin-bottom: 8px;
+}
+
+.box-line {
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.7;
+  margin-bottom: 8px;
+}
+
+.keylist {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keylist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.keys { display: flex; gap: 3px; flex-shrink: 0; }
+
+kbd {
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  min-width: 20px;
+  padding: 4px 5px;
+  text-align: center;
+  border: 1px solid rgba(127, 127, 127, 0.5);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.recipes {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.recipes li {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.recipes i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: block;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .touch {
@@ -282,7 +468,6 @@ body {
   border-radius: 8px;
   padding: 7px 10px;
   cursor: pointer;
-  align-self: flex-start;
 }
 
 .endbtn:hover { opacity: 1; }
@@ -292,5 +477,7 @@ body {
   .wrap { flex-direction: column; align-items: center; justify-content: flex-start; }
   .board canvas { width: min(92vw, 384px) !important; height: auto !important; }
   .panel { width: min(92vw, 384px); flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
-  .help { display: none; }
+  /* touch controls replace the keyboard legend on small screens */
+  .box { display: none; }
+  .menu-modes, .menu-secondary, .swatches { max-width: 100%; }
 }

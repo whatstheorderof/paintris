@@ -10,7 +10,7 @@ import {
 
 const SCALE = 4; // css upscale of the simulation grid
 
-type Screen = "menu" | "themes" | "puzzles" | "play" | "over";
+type Screen = "menu" | "themes" | "puzzles" | "settings" | "play" | "over";
 type Mode = "classic" | "zen" | "rush" | "daily" | "puzzle";
 type EndKind = "win" | "lose" | "full" | "end";
 
@@ -22,12 +22,14 @@ interface Setup {
 // Cheap synth splashes; created lazily on first user gesture.
 class Sfx {
   ctx: AudioContext | null = null;
+  muted = false;
   ensure() {
+    if (this.muted) return;
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === "suspended") this.ctx.resume();
   }
   private noise(dur: number, freq: number, gain: number) {
-    if (!this.ctx) return;
+    if (!this.ctx || this.muted) return;
     const ctx = this.ctx;
     const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -45,7 +47,7 @@ class Sfx {
   land() { this.noise(0.15, 900, 0.25); }
   boom() { this.noise(0.5, 250, 0.5); }
   chime(steps: number) {
-    if (!this.ctx) return;
+    if (!this.ctx || this.muted) return;
     const ctx = this.ctx;
     for (let k = 0; k < steps; k++) {
       const o = ctx.createOscillator();
@@ -105,6 +107,16 @@ export default function PaintrisGame() {
   useEffect(() => {
     setSave(loadSave());
   }, []);
+  // Persist on change, skipping the pre-hydration render so the defaults
+  // never overwrite a real save.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (!hydrated.current) {
+      hydrated.current = true;
+      return;
+    }
+    persistSave(save);
+  }, [save]);
   const [hud, setHud] = useState({
     score: 0, combo: 0, flash: 0,
     piecesLeft: null as number | null,
@@ -118,15 +130,26 @@ export default function PaintrisGame() {
   const themeRef = useRef(theme);
   themeRef.current = theme;
 
+  // Keep the audio engine in step with the saved preference, and play one
+  // splash when it's switched back on so you hear what you enabled.
+  const prevSound = useRef<boolean | null>(null);
+  useEffect(() => {
+    sfxRef.current.muted = !save.sound;
+    if (prevSound.current === false && save.sound) {
+      sfxRef.current.ensure();
+      sfxRef.current.land();
+    }
+    prevSound.current = save.sound;
+  }, [save.sound]);
+
   const setScreen = (s: Screen) => {
     screenRef.current = s;
     setScreenState(s);
   };
 
-  const updateSave = (next: SaveData) => {
-    setSave(next);
-    persistSave(next);
-  };
+  // Takes an updater so rapid clicks compose instead of overwriting each
+  // other with a stale snapshot; the effect above writes it to storage.
+  const updateSave = (fn: (prev: SaveData) => SaveData) => setSave(fn);
 
   const bestKey = (setup: Setup) =>
     setup.mode === "daily" ? dailyKey() : setup.mode;
@@ -136,17 +159,21 @@ export default function PaintrisGame() {
     const e = engineRef.current;
     if (!e) return;
     const setup = setupRef.current;
-    let earned = Math.floor(e.score / 100);
-    const s = { ...save, best: { ...save.best }, puzzlesDone: [...save.puzzlesDone] };
-    if (kind === "win" && setup.puzzle && !s.puzzlesDone.includes(setup.puzzle.id)) {
-      earned += 250; // first-clear bonus
-      s.puzzlesDone.push(setup.puzzle.id);
-    }
+    const puzzleId = setup.puzzle?.id;
+    const firstClear = kind === "win" && puzzleId != null && !save.puzzlesDone.includes(puzzleId);
+    const earned = Math.floor(e.score / 100) + (firstClear ? 250 : 0);
     const key = bestKey(setup);
-    const best = Math.max(s.best[key] ?? 0, e.score);
-    s.best[key] = best;
-    s.drops += earned;
-    updateSave(s);
+    const best = Math.max(save.best[key] ?? 0, e.score);
+
+    updateSave((prev) => ({
+      ...prev,
+      drops: prev.drops + earned,
+      best: { ...prev.best, [key]: Math.max(prev.best[key] ?? 0, e.score) },
+      puzzlesDone:
+        firstClear && puzzleId != null && !prev.puzzlesDone.includes(puzzleId)
+          ? [...prev.puzzlesDone, puzzleId]
+          : prev.puzzlesDone,
+    }));
     setResult({ kind, score: e.score, earned, best });
     setScreen("over");
   };
@@ -170,17 +197,19 @@ export default function PaintrisGame() {
     setScreen("play");
   };
 
+  const toggleSound = () => updateSave((prev) => ({ ...prev, sound: !prev.sound }));
+
   const buyOrSelectTheme = (t: Theme) => {
-    if (save.unlocked.includes(t.id)) {
-      updateSave({ ...save, theme: t.id });
-    } else if (save.drops >= t.cost) {
-      updateSave({
-        ...save,
-        drops: save.drops - t.cost,
-        unlocked: [...save.unlocked, t.id],
+    updateSave((prev) => {
+      if (prev.unlocked.includes(t.id)) return { ...prev, theme: t.id };
+      if (prev.drops < t.cost) return prev;
+      return {
+        ...prev,
+        drops: prev.drops - t.cost,
+        unlocked: [...prev.unlocked, t.id],
         theme: t.id,
-      });
-    }
+      };
+    });
   };
 
   // render loop
@@ -465,8 +494,13 @@ export default function PaintrisGame() {
               <button className="mode-btn" onClick={() => setScreen("puzzles")}>
                 PUZZLE<small>paint to order</small>
               </button>
-              <button className="mode-btn" onClick={() => setScreen("themes")}>
-                CANVASES<small>{save.drops} drops to spend</small>
+            </div>
+            <div className="menu-secondary">
+              <button className="side-btn" onClick={() => setScreen("themes")}>
+                🎨 CANVAS<small>change background</small>
+              </button>
+              <button className="side-btn" onClick={() => setScreen("settings")}>
+                ⚙ SETTINGS<small>sound {save.sound ? "on" : "off"}</small>
               </button>
             </div>
             {(save.best.classic ?? 0) > 0 && <p className="tag small-tag">best {save.best.classic}</p>}
@@ -493,8 +527,9 @@ export default function PaintrisGame() {
 
         {screen === "themes" && (
           <div className="overlay" style={{ background: theme.overlay }}>
-            <h1 className="title small">CANVASES</h1>
-            <p className="tag">{save.drops} paint drops</p>
+            <h1 className="title small">CANVAS</h1>
+            <p className="tag">the surface you paint on — light or dark</p>
+            <p className="tag drops-line">🎨 {save.drops} paint drops earned</p>
             <div className="swatches">
               {THEMES.map((t) => {
                 const owned = save.unlocked.includes(t.id);
@@ -505,6 +540,7 @@ export default function PaintrisGame() {
                     key={t.id}
                     className={`swatch${selected ? " selected" : ""}${!owned && !affordable ? " locked" : ""}`}
                     onClick={() => buyOrSelectTheme(t)}
+                    title={owned ? `Paint on ${t.name}` : `Unlock ${t.name} for ${t.cost} drops`}
                   >
                     <span
                       className="chip"
@@ -512,12 +548,52 @@ export default function PaintrisGame() {
                         background: `linear-gradient(180deg, rgb(${t.bgTop.join(",")}), rgb(${t.bgBot.join(",")}))`,
                         borderColor: t.border,
                       }}
-                    />
-                    <span className="swatch-name">{t.name}</span>
-                    <small>{selected ? "painting on it" : owned ? "owned" : `${t.cost} drops`}</small>
+                    >
+                      {/* sample paint so you can see how colours sit on it */}
+                      <i style={{ background: "#e5344a" }} />
+                      <i style={{ background: "#2f7fe8" }} />
+                      <i style={{ background: "#f7c948" }} />
+                    </span>
+                    <span className="swatch-text">
+                      <span className="swatch-name">{t.name}</span>
+                      <span className={`swatch-status${selected ? " on" : ""}${!owned && affordable ? " cost" : ""}`}>
+                        {selected
+                          ? "✓ IN USE"
+                          : owned
+                            ? "TAP TO USE"
+                            : affordable
+                              ? `BUY · ${t.cost} DROPS`
+                              : `🔒 ${t.cost} DROPS`}
+                      </span>
+                    </span>
                   </button>
                 );
               })}
+            </div>
+            <button className="play ghost" onClick={() => setScreen("menu")}>BACK</button>
+          </div>
+        )}
+
+        {screen === "settings" && (
+          <div className="overlay" style={{ background: theme.overlay }}>
+            <h1 className="title small">SETTINGS</h1>
+            <div className="settings-list">
+              <button className={`setting-row${save.sound ? " on" : ""}`} onClick={toggleSound}>
+                <span className="setting-text">
+                  <span className="setting-name">{save.sound ? "🔊" : "🔇"} Sound</span>
+                  <small>splashes, booms and combo chimes</small>
+                </span>
+                <span className="toggle" aria-hidden>
+                  <span className="knob" />
+                </span>
+              </button>
+              <button className="setting-row" onClick={() => setScreen("themes")}>
+                <span className="setting-text">
+                  <span className="setting-name">🎨 Canvas</span>
+                  <small>currently {theme.name}</small>
+                </span>
+                <span className="setting-go">›</span>
+              </button>
             </div>
             <button className="play ghost" onClick={() => setScreen("menu")}>BACK</button>
           </div>
@@ -575,12 +651,26 @@ export default function PaintrisGame() {
             ))}
           </div>
         )}
-        <div className="help">
-          <p>← → move · ↑ rotate</p>
-          <p>↓ soft drop · space slam</p>
-          <p>c hold · esc hang up the brush</p>
-          <p>big same-colour zones pop</p>
-          <p>red+blue=purple · blue+yellow=green · red+yellow=orange</p>
+        <div className="box">
+          <h3 className="box-title">CONTROLS</h3>
+          <ul className="keylist">
+            <li><span className="keys"><kbd>←</kbd><kbd>→</kbd></span> move</li>
+            <li><span className="keys"><kbd>↑</kbd></span> rotate</li>
+            <li><span className="keys"><kbd>↓</kbd></span> soft drop</li>
+            <li><span className="keys"><kbd>space</kbd></span> slam down</li>
+            <li><span className="keys"><kbd>C</kbd></span> hold piece</li>
+            <li><span className="keys"><kbd>esc</kbd></span> end session</li>
+          </ul>
+        </div>
+
+        <div className="box">
+          <h3 className="box-title">HOW TO SCORE</h3>
+          <p className="box-line">Big connected areas of one colour pop.</p>
+          <ul className="recipes">
+            <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#2f7fe8" }} />=<i style={{ background: "#9b4fd6" }} /> purple</li>
+            <li><i style={{ background: "#2f7fe8" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#3ec96e" }} /> green</li>
+            <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#f77f3a" }} /> orange</li>
+          </ul>
         </div>
         <div className="touch">
           {btn("←", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? -1 : 0; })}
@@ -590,9 +680,14 @@ export default function PaintrisGame() {
           {btn("⤓", () => engineRef.current?.hardDrop())}
           {btn("⇄", () => engineRef.current?.hold())}
         </div>
-        {playing && (
-          <button className="endbtn" onClick={() => endGameRef.current("end")}>■ end session</button>
-        )}
+        <div className="panel-actions">
+          <button className="endbtn" onClick={toggleSound} title="Toggle sound">
+            {save.sound ? "🔊 sound on" : "🔇 sound off"}
+          </button>
+          {playing && (
+            <button className="endbtn" onClick={() => endGameRef.current("end")}>■ end session</button>
+          )}
+        </div>
       </aside>
     </div>
   );

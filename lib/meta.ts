@@ -95,12 +95,20 @@ export interface SaveData {
   theme: string;
   best: Record<string, number>;
   puzzlesDone: number[];
+  sound: boolean;
 }
 
 const KEY = "paintris-save-v1";
 
 export function defaultSave(): SaveData {
-  return { drops: 0, unlocked: ["midnight", "canvas"], theme: "midnight", best: {}, puzzlesDone: [] };
+  return {
+    drops: 0,
+    unlocked: ["midnight", "canvas"],
+    theme: "midnight",
+    best: {},
+    puzzlesDone: [],
+    sound: true,
+  };
 }
 
 export function loadSave(): SaveData {

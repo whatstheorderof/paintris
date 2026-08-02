@@ -8,6 +8,7 @@
     "start": "next start -p 3002"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "next": "^15.4.5",
     "pixi.js": "^7.4.3",
     "react": "^19.1.0",
