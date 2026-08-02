@@ -4,13 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { COLS, ROWS, B, Engine, P, RGB, COLOR_NAMES, type EngineOpts, type Piece } from "@/lib/engine";
 import { createPixiRenderer, type PaintRenderer } from "@/lib/pixiRenderer";
 import {
-  THEMES, PUZZLES, defaultSave, loadSave, persistSave, dailySeed, dailyKey,
+  THEMES, PUZZLES, SCORE_TABS, TABLE_SIZE, defaultSave, loadSave, persistSave,
+  dailySeed, dailyKey, qualifies, withScore,
   type SaveData, type Theme, type PuzzleDef,
 } from "@/lib/meta";
 
 const SCALE = 4; // canvas pixels per grid cell, before device pixel ratio
 
-type Screen = "menu" | "themes" | "puzzles" | "settings" | "play" | "over";
+type Screen = "menu" | "themes" | "puzzles" | "settings" | "scores" | "play" | "name" | "over";
+
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -!";
 type Mode = "classic" | "zen" | "rush" | "daily" | "puzzle";
 type EndKind = "win" | "lose" | "full" | "end";
 
@@ -125,6 +128,11 @@ export default function PaintrisGame() {
   const [result, setResult] = useState<{ kind: EndKind; score: number; earned: number; best: number }>({
     kind: "end", score: 0, earned: 0, best: 0,
   });
+  // arcade-style initials entry, remembered between runs this session
+  const [initials, setInitials] = useState(["A", "A", "A"]);
+  const [slot, setSlot] = useState(0);
+  const [scoreTab, setScoreTab] = useState("classic");
+  const pendingKey = useRef<string | null>(null);
 
   const theme: Theme = THEMES.find((t) => t.id === save.theme) ?? THEMES[0];
   const themeRef = useRef(theme);
@@ -181,7 +189,16 @@ export default function PaintrisGame() {
           : prev.puzzlesDone,
     }));
     setResult({ kind, score: e.score, earned, best });
-    setScreen("over");
+    // earned a place on the board? take their initials first, arcade style
+    if (qualifies(save, key, e.score)) {
+      pendingKey.current = key;
+      slotRef.current = 0;
+      setSlot(0);
+      setScreen("name");
+    } else {
+      pendingKey.current = null;
+      setScreen("over");
+    }
   };
   const endGameRef = useRef(endGame);
   endGameRef.current = endGame;
@@ -204,6 +221,51 @@ export default function PaintrisGame() {
   };
 
   const toggleSound = () => updateSave((prev) => ({ ...prev, sound: !prev.sound }));
+
+  // slotRef is the immediate source of truth: consecutive keystrokes land in
+  // consecutive slots even if React hasn't re-rendered between them.
+  const slotRef = useRef(0);
+  const gotoSlot = (i: number) => {
+    slotRef.current = Math.max(0, Math.min(2, i));
+    setSlot(slotRef.current);
+  };
+
+  const bumpLetter = (i: number, dir: 1 | -1) => {
+    gotoSlot(i);
+    setInitials((prev) => {
+      const next = [...prev];
+      const at = ALPHABET.indexOf(next[i]);
+      next[i] = ALPHABET[(at + dir + ALPHABET.length) % ALPHABET.length];
+      return next;
+    });
+  };
+
+  const typeLetter = (ch: string) => {
+    const i = slotRef.current;
+    setInitials((prev) => {
+      const next = [...prev];
+      next[i] = ch;
+      return next;
+    });
+    gotoSlot(i + 1);
+  };
+
+  const submitName = () => {
+    const key = pendingKey.current;
+    pendingKey.current = null;
+    if (key) {
+      const name = initials.join("").trim() || "AAA";
+      const entry = { name, score: result.score, at: Date.now() };
+      updateSave((prev) => ({
+        ...prev,
+        scores: { ...prev.scores, [key]: withScore(prev.scores[key], entry) },
+      }));
+      setScoreTab(key);
+    }
+    setScreen("over");
+  };
+  const submitNameRef = useRef(submitName);
+  submitNameRef.current = submitName;
 
   const buyOrSelectTheme = (t: Theme) => {
     updateSave((prev) => {
@@ -416,6 +478,17 @@ export default function PaintrisGame() {
         if (ev.key === "Enter") startGame({ mode: "classic" });
         return;
       }
+      if (screen === "name") {
+        if (ev.key === "Enter") { submitNameRef.current(); return; }
+        if (ev.key === "ArrowUp") { ev.preventDefault(); bumpLetter(slotRef.current, 1); return; }
+        if (ev.key === "ArrowDown") { ev.preventDefault(); bumpLetter(slotRef.current, -1); return; }
+        if (ev.key === "ArrowLeft") { gotoSlot(slotRef.current - 1); return; }
+        if (ev.key === "ArrowRight") { gotoSlot(slotRef.current + 1); return; }
+        if (ev.key === "Backspace") { ev.preventDefault(); gotoSlot(slotRef.current - 1); return; }
+        const ch = ev.key.toUpperCase();
+        if (ch.length === 1 && ALPHABET.includes(ch)) typeLetter(ch);
+        return;
+      }
       if (screen === "over") {
         if (ev.key === "Enter") startGame(setupRef.current);
         return;
@@ -515,6 +588,9 @@ export default function PaintrisGame() {
               </button>
             </div>
             <div className="menu-secondary">
+              <button className="side-btn wide" onClick={() => setScreen("scores")}>
+                🏆 HIGH SCORES<small>every mode&apos;s hall of fame</small>
+              </button>
               <button className="side-btn" onClick={() => setScreen("themes")}>
                 🎨 CANVAS<small>change background</small>
               </button>
@@ -622,6 +698,61 @@ export default function PaintrisGame() {
           </div>
         )}
 
+        {screen === "scores" && (() => {
+          const puzzleTabs = PUZZLES.map((p) => ({ key: `puzzle-${p.id}`, label: p.name.toUpperCase() }));
+          const tabs = [...SCORE_TABS, ...puzzleTabs];
+          const activeKey = scoreTab === "daily" ? dailyKey() : scoreTab;
+          const rows = save.scores[activeKey] ?? [];
+          return (
+            <div className="overlay" style={{ background: theme.overlay }}>
+              <h1 className="title small">HIGH SCORES</h1>
+              <div className="tabs">
+                {tabs.map((t) => (
+                  <button
+                    key={t.key}
+                    className={`tab${scoreTab === t.key ? " on" : ""}`}
+                    onClick={() => setScoreTab(t.key)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <ol className="scoretable">
+                {Array.from({ length: TABLE_SIZE }).map((_, i) => {
+                  const row = rows[i];
+                  return (
+                    <li key={i} className={row ? "" : "blank"}>
+                      <span className="rank">{i + 1}</span>
+                      <span className="who">{row ? row.name : "---"}</span>
+                      <span className="pts">{row ? row.score.toLocaleString() : "—"}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+              {scoreTab === "daily" && <p className="tag small-tag">today&apos;s board · resets daily</p>}
+              <button className="play ghost" onClick={() => setScreen("menu")}>BACK</button>
+            </div>
+          );
+        })()}
+
+        {screen === "name" && (
+          <div className="overlay" style={{ background: theme.overlay }}>
+            <h1 className="title small">NEW HIGH SCORE</h1>
+            <p className="tag">{result.score.toLocaleString()} points · enter your initials</p>
+            <div className="initials">
+              {initials.map((ch, i) => (
+                <div key={i} className={`slotwrap${slot === i ? " on" : ""}`}>
+                  <button className="arrow" onClick={() => bumpLetter(i, 1)} aria-label="previous letter">▲</button>
+                  <button className="letter" onClick={() => gotoSlot(i)}>{ch === " " ? "_" : ch}</button>
+                  <button className="arrow" onClick={() => bumpLetter(i, -1)} aria-label="next letter">▼</button>
+                </div>
+              ))}
+            </div>
+            <p className="tag small-tag">type, or use ↑ ↓ ← → · enter to confirm</p>
+            <button className="play" onClick={submitName}>SUBMIT</button>
+          </div>
+        )}
+
         {screen === "over" && (
           <div className="overlay" style={{ background: theme.overlay }}>
             <h1 className="title small">{overTitle[result.kind]}</h1>
@@ -630,7 +761,15 @@ export default function PaintrisGame() {
             <button className="play" onClick={() => startGame(setupRef.current)}>
               {result.kind === "win" ? "PAINT MORE" : "PAINT AGAIN"}
             </button>
-            <button className="play ghost" onClick={() => setScreen("menu")}>MENU</button>
+            <div className="over-links">
+              <button className="play ghost" onClick={() => {
+                setScoreTab(setup.mode === "puzzle" && setup.puzzle ? `puzzle-${setup.puzzle.id}` : setup.mode);
+                setScreen("scores");
+              }}>
+                🏆 SCORES
+              </button>
+              <button className="play ghost" onClick={() => setScreen("menu")}>MENU</button>
+            </div>
             <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
               a game by zaney.dev
             </a>

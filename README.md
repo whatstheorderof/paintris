@@ -68,6 +68,10 @@ bridge holes. Black is dense and makes a good blocker. Yellow is light.
 - **Daily** — everyone gets the same piece sequence for the day
 - **Puzzle** — hit colour coverage targets on a fixed piece budget
 
+Beat a mode's top five and you get to punch in three initials, arcade style.
+Every mode keeps its own board — dailies reset each day and each puzzle tracks
+separately — all viewable under **HIGH SCORES**.
+
 Every run earns **paint drops**, which unlock canvases — light ones (white,
 cream, watercolour paper, candy) and dark ones (midnight, concrete, deep space).
 Purely cosmetic; they never change how the game plays.
@@ -100,9 +104,15 @@ their edges stay sharp, and the canvas renders above its CSS size for retina
 displays. Sparks are pooled GPU sprites with additive blending. Without WebGL
 it falls back to plain 2D canvas.
 
+Progress lives in `localStorage` under `paintris-save-v1` — scores, unlocked
+canvases, drops and settings.
+
 ## Stack
 
 Next.js · TypeScript · PixiJS · Vercel Analytics
+
+Type is Bungee for signage and Space Grotesk for reading text, both self-hosted
+through `next/font` so there's no request to a font CDN at runtime.
 
 ## Licence
 

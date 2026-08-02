@@ -89,14 +89,49 @@ export const PUZZLES: PuzzleDef[] = [
   },
 ];
 
+export interface ScoreEntry {
+  name: string;
+  score: number;
+  at: number; // epoch ms
+}
+
 export interface SaveData {
   drops: number;
   unlocked: string[];
   theme: string;
   best: Record<string, number>;
+  /** Top scores per mode key, highest first. */
+  scores: Record<string, ScoreEntry[]>;
   puzzlesDone: number[];
   sound: boolean;
 }
+
+export const TABLE_SIZE = 5; // entries kept per mode
+
+/** Would this score earn a place on the board for that mode? */
+export function qualifies(save: SaveData, key: string, score: number): boolean {
+  if (score <= 0) return false;
+  const list = save.scores[key] ?? [];
+  return list.length < TABLE_SIZE || score > list[list.length - 1].score;
+}
+
+/** Returns a new table with the entry inserted, trimmed to TABLE_SIZE. */
+export function withScore(
+  list: ScoreEntry[] | undefined,
+  entry: ScoreEntry
+): ScoreEntry[] {
+  return [...(list ?? []), entry]
+    .sort((a, b) => b.score - a.score || a.at - b.at)
+    .slice(0, TABLE_SIZE);
+}
+
+/** Modes shown on the high score board, in order. */
+export const SCORE_TABS: { key: string; label: string }[] = [
+  { key: "classic", label: "CLASSIC" },
+  { key: "rush", label: "RUSH" },
+  { key: "zen", label: "ZEN" },
+  { key: "daily", label: "DAILY" },
+];
 
 const KEY = "paintris-save-v1";
 
@@ -106,6 +141,7 @@ export function defaultSave(): SaveData {
     unlocked: ["midnight", "canvas"],
     theme: "midnight",
     best: {},
+    scores: {},
     puzzlesDone: [],
     sound: true,
   };
@@ -117,7 +153,15 @@ export function loadSave(): SaveData {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return base;
-    return { ...base, ...JSON.parse(raw) };
+    const save: SaveData = { ...base, ...JSON.parse(raw) };
+    // Saves from before the score board only kept a single number per mode;
+    // seed the table from those so old bests still show up.
+    for (const [key, score] of Object.entries(save.best ?? {})) {
+      if (score > 0 && !(save.scores[key]?.length)) {
+        save.scores[key] = [{ name: "YOU", score, at: 0 }];
+      }
+    }
+    return save;
   } catch {
     return base;
   }

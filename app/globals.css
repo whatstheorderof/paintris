@@ -1,8 +1,31 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+:root {
+  --display: var(--font-display), "Arial Black", sans-serif;
+  --ui: var(--font-ui), system-ui, sans-serif;
+}
+
 body {
-  font-family: "Courier New", ui-monospace, monospace;
+  font-family: var(--ui);
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
+}
+
+.title,
+.box-title,
+.mode-btn,
+.side-btn,
+.play,
+.stat label,
+.stat .val,
+.swatch-name,
+.setting-name,
+.tab,
+.scoretable,
+.combo,
+.target label {
+  font-family: var(--display);
+  font-weight: 400;
 }
 
 .wrap {
@@ -45,12 +68,13 @@ body {
 }
 
 .title {
-  font-size: 46px;
-  letter-spacing: 4px;
+  font-size: 44px;
+  letter-spacing: 1px;
   display: flex;
+  line-height: 1;
 }
 
-.title.small { font-size: 30px; }
+.title.small { font-size: 26px; letter-spacing: 0.5px; }
 
 .drip {
   display: inline-block;
@@ -166,6 +190,8 @@ body {
   width: 100%;
   max-width: 330px;
 }
+
+.side-btn.wide { grid-column: 1 / -1; }
 
 .side-btn {
   font: inherit;
@@ -454,6 +480,113 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* ---- high score board ---- */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+  max-width: 340px;
+}
+
+.tab {
+  font-family: var(--display);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.tab:hover { opacity: 0.9; }
+.tab.on { opacity: 1; background: rgba(127, 127, 127, 0.28); border-color: currentColor; }
+
+.scoretable {
+  list-style: none;
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scoretable li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.14);
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.scoretable li.blank { opacity: 0.35; }
+.scoretable li:first-child:not(.blank) { background: rgba(247, 201, 72, 0.24); }
+
+.scoretable .rank { opacity: 0.55; font-size: 11px; }
+.scoretable .who { letter-spacing: 3px; }
+.scoretable .pts { font-variant-numeric: tabular-nums; }
+
+/* ---- arcade initials entry ---- */
+
+.initials {
+  display: flex;
+  gap: 12px;
+}
+
+.slotwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.slotwrap .arrow {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.4;
+  padding: 4px 8px;
+}
+
+.slotwrap .arrow:hover { opacity: 1; }
+
+.slotwrap .letter {
+  font-family: var(--display);
+  font-size: 30px;
+  line-height: 1;
+  width: 54px;
+  height: 62px;
+  color: inherit;
+  background: rgba(127, 127, 127, 0.16);
+  border: 2px solid rgba(127, 127, 127, 0.35);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.slotwrap.on .letter {
+  border-color: currentColor;
+  background: rgba(127, 127, 127, 0.3);
+}
+
+.slotwrap.on .arrow { opacity: 0.9; }
+
+.over-links {
+  display: flex;
+  gap: 8px;
 }
 
 .touch {
