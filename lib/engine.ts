@@ -143,11 +143,10 @@ const COMBO_WINDOW = 300; // frames between clears that keep a combo alive
 const BOOM_RADIUS = 34;
 const PULSE_RADIUS = 27; // white push / magnetic pull
 const MIN_PAINT_FOR_TARGETS = 7100; // coverage goals need a real painting first
-// Canvas-full backstop for paint that settles at the ceiling. Spawn collision
-// is the main game-over; this must be slack enough that one landing near the
-// top — or an upward splash — doesn't end the run.
-const TOP_ROWS = COLS * 2; // cells scanned for the canvas-full check
-const TOP_FULL = B * 7; // ...roughly three and a half blocks' worth
+// Canvas-full backstop, measured as the share of COLUMNS whose top two rows
+// hold paint. Counting cells instead would miss a narrow tower that reaches
+// the ceiling in only a few columns.
+const TOP_COLS_FULL = 0.55;
 
 // mulberry32 — tiny seedable PRNG so daily runs share a piece sequence
 function mulberry32(seed: number) {
@@ -248,9 +247,10 @@ export class Engine {
     this.piece = this.next;
     this.next = this.makePiece();
     this.placeAtSpawn(this.piece);
-    if (this.collides(this.piece, 0, 0)) {
-      this.endGame();
-    }
+  }
+
+  private pieceHeight(p: Piece): number {
+    return (Math.max(...p.blocks.map((b) => b[1])) + 1) * B;
   }
 
   // stash the current piece; bring out the held one (or the next)
@@ -266,7 +266,6 @@ export class Engine {
     this.placeAtSpawn(this.piece);
     this.held = cur;
     this.holdUsed = true;
-    if (this.collides(this.piece, 0, 0)) this.endGame();
   }
 
   // how far the active piece would fall on a hard drop (landing preview)
@@ -345,6 +344,15 @@ export class Engine {
   private land() {
     const p = this.piece!;
     this.piece = null;
+
+    // Lock out: the stack is so high the piece came to rest without any part
+    // of it reaching the canvas. Pieces spawn above row 0, so this — not a
+    // test at the spawn position — is what "you hit the top" means here.
+    if (!this.opts.zen && p.y + this.pieceHeight(p) <= 0) {
+      this.endGame();
+      return;
+    }
+
     if (p.color === P.Explosive) {
       this.explode(p);
       return;
@@ -508,9 +516,11 @@ export class Engine {
 
     // canvas is full when settled paint crowds the very top of the board
     if (!this.ended && !this.opts.zen && this.frame % 15 === 0) {
-      let top = 0;
-      for (let i = 0; i < TOP_ROWS; i++) if (this.grid[i] !== P.Empty) top++;
-      if (top > TOP_FULL) this.endGame();
+      let cols = 0;
+      for (let x = 0; x < COLS; x++) {
+        if (this.grid[x] !== P.Empty || this.grid[COLS + x] !== P.Empty) cols++;
+      }
+      if (cols > COLS * TOP_COLS_FULL) this.endGame();
     }
 
     if (this.comboTimer > 0) this.comboTimer--;
@@ -618,8 +628,11 @@ export class Engine {
         }
         if (this.rnd() < props.stick) continue;
 
-        const canL = x > 0 && g[below - 1] === P.Empty && g[i - 1] === P.Empty;
-        const canR = x < COLS - 1 && g[below + 1] === P.Empty && g[i + 1] === P.Empty;
+        // Slide down slopes when the diagonal is clear. Requiring the cell
+        // beside it to be clear too would hold paint at a steep angle, and
+        // mounds would spike into the ceiling with the board half empty.
+        const canL = x > 0 && g[below - 1] === P.Empty;
+        const canR = x < COLS - 1 && g[below + 1] === P.Empty;
         if (canL || canR) {
           const dir = canL && canR ? (this.rnd() < 0.5 ? -1 : 1) : canL ? -1 : 1;
           g[below + dir] = c;
