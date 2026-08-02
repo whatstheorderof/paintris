@@ -9,8 +9,6 @@ import {
 } from "@/lib/meta";
 
 const SCALE = 4; // canvas pixels per grid cell, before device pixel ratio
-const DISPLAY_W = 384; // css size of the board — the canvas renders above this
-const DISPLAY_H = 576;
 
 type Screen = "menu" | "themes" | "puzzles" | "settings" | "play" | "over";
 type Mode = "classic" | "zen" | "rush" | "daily" | "puzzle";
@@ -77,8 +75,8 @@ function rainbow(t: number): [number, number, number] {
 function engineOpts(setup: Setup): EngineOpts {
   switch (setup.mode) {
     case "classic": return { ramp: true };
-    case "zen": return { zen: true, baseSpeed: 1.08 };
-    case "rush": return { ramp: true, baseSpeed: 2.97 };
+    case "zen": return { zen: true, baseSpeed: 1.36 };
+    case "rush": return { ramp: true, baseSpeed: 3.75 };
     case "daily": return { ramp: true, seed: dailySeed() };
     case "puzzle": {
       const p = setup.puzzle!;
@@ -153,8 +151,14 @@ export default function PaintrisGame() {
   // other with a stale snapshot; the effect above writes it to storage.
   const updateSave = (fn: (prev: SaveData) => SaveData) => setSave(fn);
 
+  // Each mode keeps its own high score; dailies are per-day and each puzzle
+  // tracks separately, since they're distinct challenges.
   const bestKey = (setup: Setup) =>
-    setup.mode === "daily" ? dailyKey() : setup.mode;
+    setup.mode === "daily"
+      ? dailyKey()
+      : setup.mode === "puzzle" && setup.puzzle
+        ? `puzzle-${setup.puzzle.id}`
+        : setup.mode;
 
   const endGame = (kind: EndKind) => {
     if (screenRef.current !== "play") return;
@@ -473,7 +477,9 @@ export default function PaintrisGame() {
       style={{ background: theme.page, color: theme.ink }}
     >
       <div className="board" style={{ borderColor: theme.border, boxShadow: `0 0 60px ${theme.glow}` }}>
-        <canvas ref={canvasRef} style={{ width: DISPLAY_W, height: DISPLAY_H }} />
+        {/* CSS drives the display size; the canvas backing store is far
+            larger so the board stays sharp as it scales up */}
+        <canvas ref={canvasRef} style={{ aspectRatio: `${COLS} / ${ROWS}` }} />
 
         {playing && hud.flash > 0 && hud.combo > 0 && (
           <div className="combo" key={hud.combo}>
@@ -487,20 +493,25 @@ export default function PaintrisGame() {
             {titleWord}
             <p className="tag">blocks made of wet paint</p>
             <div className="menu-modes">
-              <button className="mode-btn" onClick={() => startGame({ mode: "classic" })}>
-                CLASSIC<small>endless · speeds up</small>
-              </button>
-              <button className="mode-btn" onClick={() => startGame({ mode: "zen" })}>
-                ZEN<small>no losing · just paint</small>
-              </button>
-              <button className="mode-btn" onClick={() => startGame({ mode: "rush" })}>
-                RUSH<small>twice the pour</small>
-              </button>
-              <button className="mode-btn" onClick={() => startGame({ mode: "daily" })}>
-                DAILY<small>same paint for everyone</small>
-              </button>
+              {([
+                ["classic", "CLASSIC", "endless · speeds up", "classic"],
+                ["zen", "ZEN", "no losing · just paint", "zen"],
+                ["rush", "RUSH", "twice the pour", "rush"],
+                ["daily", "DAILY", "same paint for everyone", dailyKey()],
+              ] as [Mode, string, string, string][]).map(([mode, label, blurb, key]) => (
+                <button key={mode} className="mode-btn" onClick={() => startGame({ mode })}>
+                  {label}
+                  <small>{blurb}</small>
+                  <em className="best">
+                    {save.best[key] ? `★ best ${save.best[key]}` : "no score yet"}
+                  </em>
+                </button>
+              ))}
               <button className="mode-btn" onClick={() => setScreen("puzzles")}>
                 PUZZLE<small>paint to order</small>
+                <em className="best">
+                  {save.puzzlesDone.length}/{PUZZLES.length} solved
+                </em>
               </button>
             </div>
             <div className="menu-secondary">
@@ -511,7 +522,6 @@ export default function PaintrisGame() {
                 ⚙ SETTINGS<small>sound {save.sound ? "on" : "off"}</small>
               </button>
             </div>
-            {(save.best.classic ?? 0) > 0 && <p className="tag small-tag">best {save.best.classic}</p>}
             <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
               a game by zaney.dev
             </a>
@@ -528,6 +538,9 @@ export default function PaintrisGame() {
                   <small>
                     {p.targets.map((tg) => `${tg.pct}% ${COLOR_NAMES[tg.color]}`).join(" + ")} · {p.budget} pieces
                   </small>
+                  <em className="best">
+                    {save.best[`puzzle-${p.id}`] ? `★ best ${save.best[`puzzle-${p.id}`]}` : "not solved yet"}
+                  </em>
                 </button>
               ))}
             </div>

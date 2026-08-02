@@ -3,12 +3,13 @@
 // that flow, mix, and settle. Connected same-colour zones above a size
 // threshold clear with combos.
 
-// Simulation resolution. Finer than the display needs, so paint grain and
-// piece edges stay sharp on high-DPI screens. Constants further down that
-// depend on cell counts are tuned for this grid.
-export const COLS = 128;
-export const ROWS = 192;
-export const B = 16; // grid cells per tetromino block edge
+// A 10 x 20 block playfield, the classic proportion — anything shorter fills
+// up before you can build a colour zone worth clearing. Each block is B cells
+// on a side, giving the paint room to splash and pool. Constants further down
+// that depend on cell counts are tuned for this grid.
+export const B = 14; // grid cells per tetromino block edge
+export const COLS = B * 10;
+export const ROWS = B * 20;
 
 export enum P {
   Empty = 0,
@@ -134,14 +135,19 @@ export type EngineEvent = "land" | "clear" | "boom" | "over" | "win";
 
 // With hold + landing preview, deliberate play makes zones easy to build —
 // a higher pop threshold keeps clears feeling earned.
-const CLEAR_SIZE = 1950; // cells a connected colour zone needs to pop
+// Scale this with cells-per-block (B*B), not with total board area — it's
+// "how many blocks of one colour must connect", which is what a player feels.
+const CLEAR_SIZE = B * B * 8; // ~8 blocks of connected colour
 const CLEAR_ANIM = 32; // frames of glow before removal
 const COMBO_WINDOW = 300; // frames between clears that keep a combo alive
-const BOOM_RADIUS = 27;
-const PULSE_RADIUS = 21; // white push / magnetic pull
-const MIN_PAINT_FOR_TARGETS = 4450; // coverage goals need a real painting first
+const BOOM_RADIUS = 34;
+const PULSE_RADIUS = 27; // white push / magnetic pull
+const MIN_PAINT_FOR_TARGETS = 7100; // coverage goals need a real painting first
+// Canvas-full backstop for paint that settles at the ceiling. Spawn collision
+// is the main game-over; this must be slack enough that one landing near the
+// top — or an upward splash — doesn't end the run.
 const TOP_ROWS = COLS * 2; // cells scanned for the canvas-full check
-const TOP_FULL = 21; // ...and how many of them may hold paint
+const TOP_FULL = B * 7; // ...roughly three and a half blocks' worth
 
 // mulberry32 — tiny seedable PRNG so daily runs share a piece sequence
 function mulberry32(seed: number) {
@@ -279,8 +285,8 @@ export class Engine {
   }
 
   private speed(): number {
-    let s = this.opts.baseSpeed ?? 1.35;
-    if (this.opts.ramp) s += Math.min(2.7, this.piecesUsed * 0.027);
+    let s = this.opts.baseSpeed ?? 1.7;
+    if (this.opts.ramp) s += Math.min(3.4, this.piecesUsed * 0.03);
     return s;
   }
 
@@ -295,7 +301,7 @@ export class Engine {
       for (let y = Math.max(0, y0); y < y0 + B; y++) {
         const row = y * COLS;
         for (let x = x0; x < x0 + B; x++) {
-          if (this.grid[row + x] !== P.Empty && ++overlap > 11) return true;
+          if (this.grid[row + x] !== P.Empty && ++overlap > 9) return true;
         }
       }
     }
@@ -473,7 +479,7 @@ export class Engine {
           if (!this.collides(this.piece, this.moveDir, 0)) this.piece.x += this.moveDir;
         }
       }
-      this.fallAcc += this.softDrop ? 8 : this.speed();
+      this.fallAcc += this.softDrop ? 11 : this.speed();
       let fall = this.fallAcc | 0;
       this.fallAcc -= fall;
       let moved = 0;

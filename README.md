@@ -81,11 +81,12 @@ Purely cosmetic; they never change how the game plays.
 | `lib/meta.ts` | canvases, puzzles, save data |
 | `components/PaintrisGame.tsx` | compositing and UI |
 
-The board is a `128 × 192` cell grid. Pieces fall as rigid `16 × 16`-cell
-blocks, then dissolve into loose paint that the sand solver moves each frame —
-falling, flowing sideways, sticking, mixing, and pulling itself together by
-surface tension. A flood fill finds connected same-colour regions and pops the
-big ones.
+The playfield is 10 × 20 blocks, the classic proportion, at `14` simulation
+cells per block — a `140 × 280` grid. Pieces fall as rigid blocks, then
+dissolve into loose paint that the sand solver moves each frame — falling,
+flowing sideways, sticking, mixing, and pulling itself together by surface
+tension. A flood fill finds connected same-colour regions and pops any holding
+about eight blocks' worth of paint.
 
 The simulation runs on a fixed 60 Hz interval clock and owns its own timing, so
 it stays correct on any refresh rate and keeps flowing when the tab is occluded

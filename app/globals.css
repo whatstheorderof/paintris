@@ -23,8 +23,11 @@ body {
   align-self: center;
 }
 
+/* Fill the page vertically; width follows from the canvas aspect ratio. */
 .board canvas {
   display: block;
+  height: min(88vh, 920px);
+  width: auto;
 }
 
 .overlay {
@@ -143,6 +146,15 @@ body {
   font-weight: normal;
   letter-spacing: 0.5px;
   opacity: 0.65;
+}
+
+.mode-btn .best {
+  font-size: 9px;
+  font-style: normal;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+  opacity: 0.5;
+  margin-top: 1px;
 }
 
 .mode-btn:hover { background: rgba(127, 127, 127, 0.26); }
@@ -323,7 +335,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  width: 180px;
+  width: 200px;
 }
 
 .stat label,
@@ -491,13 +503,21 @@ kbd {
 @media (max-width: 640px) {
   body { overflow: auto; }
   .wrap { flex-direction: column; align-items: center; justify-content: flex-start; }
-  .board canvas { width: min(92vw, 384px) !important; height: auto !important; }
-  .panel { width: min(92vw, 384px); flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  /* Size by height, not width, so the board and the controls both fit on
+     screen without scrolling. dvh accounts for browser chrome. */
+  .board canvas {
+    height: min(64dvh, 620px) !important;
+    width: auto !important;
+    max-width: 94vw;
+  }
+  .wrap { gap: 12px; padding: 10px; }
+  .panel { width: min(94vw, 440px); flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
   /* touch controls replace the keyboard legend on small screens */
   .box { display: none; }
   .menu-modes, .menu-secondary, .swatches { max-width: 100%; }
   /* full-width thumb targets, movement row separated from drop/hold */
-  .touch { width: 100%; gap: 10px; }
-  .touch-row { gap: 10px; }
-  .ctl { height: 60px; font-size: 24px; border-radius: 12px; }
+  .touch { width: 100%; gap: 8px; }
+  .touch-row { gap: 8px; }
+  .ctl { height: 54px; font-size: 22px; border-radius: 12px; }
+  .stat .val { font-size: 22px; }
 }
