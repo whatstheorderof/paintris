@@ -43,8 +43,20 @@ void main() {
 }
 `;
 
+// The active piece and its landing preview are drawn as real geometry rather
+// than baked into the low-res paint grid, so their edges stay crisp at any
+// display size.
+export interface PieceDraw {
+  blocks: [number, number][];
+  x: number;
+  y: number;
+  color: number;
+  ghostDy: number;
+  cell: number; // grid cells per block edge
+}
+
 export interface PaintRenderer {
-  draw(t: number, sparks: Spark[], light: boolean): void;
+  draw(t: number, sparks: Spark[], light: boolean, piece: PieceDraw | null): void;
   destroy(): void;
 }
 
@@ -77,7 +89,11 @@ export async function createPixiRenderer(
       view: canvas,
       width: W,
       height: H,
-      antialias: false,
+      // Render above CSS size so the board stays sharp on retina displays.
+      // autoDensity stays off — CSS owns the display size.
+      resolution: Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, 2),
+      autoDensity: false,
+      antialias: true,
       autoStart: false,
       backgroundAlpha: 1,
       powerPreference: "high-performance",
@@ -103,6 +119,41 @@ export async function createPixiRenderer(
     const mesh = new PIXI.Mesh(geometry, shader);
     app.stage.addChild(mesh);
 
+    // crisp vector layer for the falling piece and its landing preview
+    const pieceGfx = new PIXI.Graphics();
+    app.stage.addChild(pieceGfx);
+
+    const drawPiece = (p: PieceDraw | null, t: number) => {
+      pieceGfx.clear();
+      if (!p) return;
+      const px = p.cell * scale; // block edge in logical pixels
+      const hex = hexOf(p.color, t, 0);
+      const r = Math.max(2, px * 0.13);
+
+      if (p.ghostDy > p.cell) {
+        pieceGfx.lineStyle({ width: Math.max(1.5, px * 0.055), color: hex, alpha: 0.5 });
+        for (const [bx, by] of p.blocks) {
+          pieceGfx.drawRoundedRect(
+            (p.x + bx * p.cell) * scale,
+            (p.y + by * p.cell + p.ghostDy) * scale,
+            px, px, r
+          );
+        }
+        pieceGfx.lineStyle(0);
+      }
+
+      for (const [bx, by] of p.blocks) {
+        const X = (p.x + bx * p.cell) * scale;
+        const Y = (p.y + by * p.cell) * scale;
+        pieceGfx.beginFill(hex).drawRoundedRect(X, Y, px, px, r).endFill();
+        // wet-paint shading: bright top face, shadowed underside
+        pieceGfx.beginFill(0xffffff, 0.24)
+          .drawRoundedRect(X + px * 0.1, Y + px * 0.08, px * 0.8, px * 0.28, r * 0.7).endFill();
+        pieceGfx.beginFill(0x000000, 0.16)
+          .drawRoundedRect(X + px * 0.1, Y + px * 0.7, px * 0.8, px * 0.22, r * 0.7).endFill();
+      }
+    };
+
     // soft round spark texture
     const g = new PIXI.Graphics();
     g.beginFill(0xffffff, 0.35).drawCircle(8, 8, 8).endFill();
@@ -116,9 +167,10 @@ export async function createPixiRenderer(
     const pool: InstanceType<typeof PIXI.Sprite>[] = [];
 
     return {
-      draw(t: number, sparks: Spark[], light: boolean) {
+      draw(t: number, sparks: Spark[], light: boolean, piece: PieceDraw | null) {
         baseTexture.update();
         shader.uniforms.uT = t;
+        drawPiece(piece, t);
 
         while (pool.length < sparks.length) {
           const s = new PIXI.Sprite(sparkTex);

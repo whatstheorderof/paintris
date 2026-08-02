@@ -3,9 +3,12 @@
 // that flow, mix, and settle. Connected same-colour zones above a size
 // threshold clear with combos.
 
-export const COLS = 96;
-export const ROWS = 144;
-export const B = 12; // grid cells per tetromino block edge
+// Simulation resolution. Finer than the display needs, so paint grain and
+// piece edges stay sharp on high-DPI screens. Constants further down that
+// depend on cell counts are tuned for this grid.
+export const COLS = 128;
+export const ROWS = 192;
+export const B = 16; // grid cells per tetromino block edge
 
 export enum P {
   Empty = 0,
@@ -131,12 +134,14 @@ export type EngineEvent = "land" | "clear" | "boom" | "over" | "win";
 
 // With hold + landing preview, deliberate play makes zones easy to build —
 // a higher pop threshold keeps clears feeling earned.
-const CLEAR_SIZE = 1100; // cells a connected colour zone needs to pop
+const CLEAR_SIZE = 1950; // cells a connected colour zone needs to pop
 const CLEAR_ANIM = 32; // frames of glow before removal
 const COMBO_WINDOW = 300; // frames between clears that keep a combo alive
-const BOOM_RADIUS = 20;
-const PULSE_RADIUS = 16; // white push / magnetic pull
-const MIN_PAINT_FOR_TARGETS = 2500; // coverage goals need a real painting first
+const BOOM_RADIUS = 27;
+const PULSE_RADIUS = 21; // white push / magnetic pull
+const MIN_PAINT_FOR_TARGETS = 4450; // coverage goals need a real painting first
+const TOP_ROWS = COLS * 2; // cells scanned for the canvas-full check
+const TOP_FULL = 21; // ...and how many of them may hold paint
 
 // mulberry32 — tiny seedable PRNG so daily runs share a piece sequence
 function mulberry32(seed: number) {
@@ -274,8 +279,8 @@ export class Engine {
   }
 
   private speed(): number {
-    let s = this.opts.baseSpeed ?? 1;
-    if (this.opts.ramp) s += Math.min(2, this.piecesUsed * 0.02);
+    let s = this.opts.baseSpeed ?? 1.35;
+    if (this.opts.ramp) s += Math.min(2.7, this.piecesUsed * 0.027);
     return s;
   }
 
@@ -290,7 +295,7 @@ export class Engine {
       for (let y = Math.max(0, y0); y < y0 + B; y++) {
         const row = y * COLS;
         for (let x = x0; x < x0 + B; x++) {
-          if (this.grid[row + x] !== P.Empty && ++overlap > 6) return true;
+          if (this.grid[row + x] !== P.Empty && ++overlap > 11) return true;
         }
       }
     }
@@ -464,11 +469,11 @@ export class Engine {
 
     if (!this.ended && this.piece) {
       if (this.moveDir !== 0) {
-        for (let k = 0; k < 2; k++) {
+        for (let k = 0; k < 3; k++) {
           if (!this.collides(this.piece, this.moveDir, 0)) this.piece.x += this.moveDir;
         }
       }
-      this.fallAcc += this.softDrop ? 6 : this.speed();
+      this.fallAcc += this.softDrop ? 8 : this.speed();
       let fall = this.fallAcc | 0;
       this.fallAcc -= fall;
       let moved = 0;
@@ -498,8 +503,8 @@ export class Engine {
     // canvas is full when settled paint crowds the very top of the board
     if (!this.ended && !this.opts.zen && this.frame % 15 === 0) {
       let top = 0;
-      for (let i = 0; i < COLS * 2; i++) if (this.grid[i] !== P.Empty) top++;
-      if (top > 16) this.endGame();
+      for (let i = 0; i < TOP_ROWS; i++) if (this.grid[i] !== P.Empty) top++;
+      if (top > TOP_FULL) this.endGame();
     }
 
     if (this.comboTimer > 0) this.comboTimer--;
@@ -561,9 +566,15 @@ export class Engine {
           continue;
         }
 
-        // frozen paint is temporarily solid; it thaws into water-blue
+        // frozen paint is temporarily solid — it still falls, but never
+        // spreads or mixes, and eventually thaws into water-blue
         if (c === P.Frozen) {
-          if (this.rnd() < 0.0012) g[i] = P.Blue;
+          if (g[below] === P.Empty) {
+            g[below] = c;
+            g[i] = P.Empty;
+          } else if (this.rnd() < 0.0012) {
+            g[i] = P.Blue;
+          }
           continue;
         }
 

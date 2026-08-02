@@ -8,7 +8,9 @@ import {
   type SaveData, type Theme, type PuzzleDef,
 } from "@/lib/meta";
 
-const SCALE = 4; // css upscale of the simulation grid
+const SCALE = 4; // canvas pixels per grid cell, before device pixel ratio
+const DISPLAY_W = 384; // css size of the board — the canvas renders above this
+const DISPLAY_H = 576;
 
 type Screen = "menu" | "themes" | "puzzles" | "settings" | "play" | "over";
 type Mode = "classic" | "zen" | "rush" | "daily" | "puzzle";
@@ -75,8 +77,8 @@ function rainbow(t: number): [number, number, number] {
 function engineOpts(setup: Setup): EngineOpts {
   switch (setup.mode) {
     case "classic": return { ramp: true };
-    case "zen": return { zen: true, baseSpeed: 0.8 };
-    case "rush": return { ramp: true, baseSpeed: 2.2 };
+    case "zen": return { zen: true, baseSpeed: 1.08 };
+    case "rush": return { ramp: true, baseSpeed: 2.97 };
     case "daily": return { ramp: true, seed: dailySeed() };
     case "puzzle": {
       const p = setup.puzzle!;
@@ -302,8 +304,12 @@ export default function PaintrisGame() {
         }
       }
 
+      // Pixi draws the piece and its preview as crisp geometry; only the 2D
+      // fallback bakes them into the low-res grid.
+      const bakePiece = !glossRef.current;
+
       // landing preview: faint outline where the piece would splash down
-      if (e?.piece) {
+      if (bakePiece && e?.piece) {
         const p = e.piece;
         const gdy = e.ghostDy();
         if (gdy > B) {
@@ -328,7 +334,7 @@ export default function PaintrisGame() {
       }
 
       // active piece on top
-      if (e?.piece) {
+      if (bakePiece && e?.piece) {
         const p = e.piece;
         const [r, g, b] = p.color === P.Rainbow ? rainbow(t) : RGB[p.color];
         for (const [bx, by] of p.blocks) {
@@ -365,7 +371,9 @@ export default function PaintrisGame() {
       }
 
       if (glossRef.current) {
-        glossRef.current.draw(t * 0.05, e ? e.sparks : [], th.light);
+        const p = e?.piece;
+        glossRef.current.draw(t * 0.05, e ? e.sparks : [], th.light,
+          p ? { blocks: p.blocks, x: p.x, y: p.y, color: p.color, ghostDy: e!.ghostDy(), cell: B } : null);
       } else if (ctx2dRef.current && img) {
         // 2D fallback has no mask shader — flatten alpha
         for (let o = 3; o < d.length; o += 4) d[o] = 255;
@@ -465,7 +473,7 @@ export default function PaintrisGame() {
       style={{ background: theme.page, color: theme.ink }}
     >
       <div className="board" style={{ borderColor: theme.border, boxShadow: `0 0 60px ${theme.glow}` }}>
-        <canvas ref={canvasRef} style={{ width: COLS * SCALE, height: ROWS * SCALE }} />
+        <canvas ref={canvasRef} style={{ width: DISPLAY_W, height: DISPLAY_H }} />
 
         {playing && hud.flash > 0 && hud.combo > 0 && (
           <div className="combo" key={hud.combo}>
@@ -504,7 +512,9 @@ export default function PaintrisGame() {
               </button>
             </div>
             {(save.best.classic ?? 0) > 0 && <p className="tag small-tag">best {save.best.classic}</p>}
-            <p className="credit">a game by zaney.dev</p>
+            <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
+              a game by zaney.dev
+            </a>
           </div>
         )}
 
@@ -608,7 +618,9 @@ export default function PaintrisGame() {
               {result.kind === "win" ? "PAINT MORE" : "PAINT AGAIN"}
             </button>
             <button className="play ghost" onClick={() => setScreen("menu")}>MENU</button>
-            <p className="credit">a game by zaney.dev</p>
+            <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
+              a game by zaney.dev
+            </a>
           </div>
         )}
       </div>
@@ -672,13 +684,18 @@ export default function PaintrisGame() {
             <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#f77f3a" }} /> orange</li>
           </ul>
         </div>
+        {/* movement on its own row, drop and hold below — easier to thumb */}
         <div className="touch">
-          {btn("←", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? -1 : 0; })}
-          {btn("⟳", () => engineRef.current?.rotate())}
-          {btn("→", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? 1 : 0; })}
-          {btn("▼", () => {}, (on) => { if (engineRef.current) engineRef.current.softDrop = on; })}
-          {btn("⤓", () => engineRef.current?.hardDrop())}
-          {btn("⇄", () => engineRef.current?.hold())}
+          <div className="touch-row">
+            {btn("←", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? -1 : 0; })}
+            {btn("⟳", () => engineRef.current?.rotate())}
+            {btn("→", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? 1 : 0; })}
+          </div>
+          <div className="touch-row">
+            {btn("▼", () => {}, (on) => { if (engineRef.current) engineRef.current.softDrop = on; })}
+            {btn("⤓", () => engineRef.current?.hardDrop())}
+            {btn("⇄", () => engineRef.current?.hold())}
+          </div>
         </div>
         <div className="panel-actions">
           <button className="endbtn" onClick={toggleSound} title="Toggle sound">

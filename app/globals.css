@@ -103,6 +103,14 @@ body {
   font-size: 12px;
   opacity: 0.6;
   letter-spacing: 1px;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.credit:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 .menu-modes {
@@ -438,14 +446,20 @@ kbd {
 
 .touch {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  flex-wrap: wrap;
+}
+
+.touch-row {
+  display: flex;
+  gap: 6px;
 }
 
 .ctl {
   font: inherit;
   font-size: 18px;
-  width: 44px;
+  flex: 1;
+  min-width: 44px;
   height: 44px;
   border-radius: 8px;
   border: 1px solid rgba(127, 127, 127, 0.4);
@@ -453,6 +467,8 @@ kbd {
   color: inherit;
   cursor: pointer;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .ctl:active { background: rgba(127, 127, 127, 0.3); }
@@ -480,4 +496,8 @@ kbd {
   /* touch controls replace the keyboard legend on small screens */
   .box { display: none; }
   .menu-modes, .menu-secondary, .swatches { max-width: 100%; }
+  /* full-width thumb targets, movement row separated from drop/hold */
+  .touch { width: 100%; gap: 10px; }
+  .touch-row { gap: 10px; }
+  .ctl { height: 60px; font-size: 24px; border-radius: 12px; }
 }

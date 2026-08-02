@@ -81,10 +81,11 @@ Purely cosmetic; they never change how the game plays.
 | `lib/meta.ts` | canvases, puzzles, save data |
 | `components/PaintrisGame.tsx` | compositing and UI |
 
-The board is a `96 × 144` cell grid. Pieces fall as rigid `12 × 12`-cell blocks,
-then dissolve into loose paint that the sand solver moves each frame — falling,
-flowing sideways, sticking, mixing, and pulling itself together by surface
-tension. A flood fill finds connected same-colour regions and pops the big ones.
+The board is a `128 × 192` cell grid. Pieces fall as rigid `16 × 16`-cell
+blocks, then dissolve into loose paint that the sand solver moves each frame —
+falling, flowing sideways, sticking, mixing, and pulling itself together by
+surface tension. A flood fill finds connected same-colour regions and pops the
+big ones.
 
 The simulation runs on a fixed 60 Hz interval clock and owns its own timing, so
 it stays correct on any refresh rate and keeps flowing when the tab is occluded
@@ -92,8 +93,11 @@ it stays correct on any refresh rate and keeps flowing when the tab is occluded
 Rendering is separate: the grid is composited on the CPU into an RGBA buffer
 where **alpha is the paint mask**, uploaded to a PixiJS buffer texture, and
 drawn by a mesh shader that derives surface normals from that mask for wet
-specular highlights and a moving sheen. Sparks are pooled GPU sprites with
-additive blending. Without WebGL it falls back to plain 2D canvas.
+specular highlights and a moving sheen. The falling piece and its landing
+preview are drawn as vector geometry on top rather than baked into the grid, so
+their edges stay sharp, and the canvas renders above its CSS size for retina
+displays. Sparks are pooled GPU sprites with additive blending. Without WebGL
+it falls back to plain 2D canvas.
 
 ## Stack
 
