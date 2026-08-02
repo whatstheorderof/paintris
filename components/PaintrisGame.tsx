@@ -123,6 +123,7 @@ export default function PaintrisGame() {
   const [hud, setHud] = useState({
     score: 0, combo: 0, flash: 0,
     piecesLeft: null as number | null,
+    flooding: false,
     progress: [] as { color: number; pct: number; target: number }[],
   });
   const [result, setResult] = useState<{ kind: EndKind; score: number; earned: number; best: number }>({
@@ -322,7 +323,7 @@ export default function PaintrisGame() {
       if (e.frame % 10 === 0) {
         setHud({
           score: e.score, combo: e.combo, flash: e.comboFlash,
-          piecesLeft: e.piecesLeft, progress: e.progress,
+          piecesLeft: e.piecesLeft, flooding: e.flooding, progress: e.progress,
         });
       }
     }, 1000 / 60);
@@ -553,6 +554,10 @@ export default function PaintrisGame() {
         {/* CSS drives the display size; the canvas backing store is far
             larger so the board stays sharp as it scales up */}
         <canvas ref={canvasRef} style={{ aspectRatio: `${COLS} / ${ROWS}` }} />
+
+        {playing && hud.flooding && (
+          <div className="flooding">PAINT RUNNING · zones pop sooner</div>
+        )}
 
         {playing && hud.flash > 0 && hud.combo > 0 && (
           <div className="combo" key={hud.combo}>

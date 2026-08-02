@@ -138,6 +138,16 @@ export type EngineEvent = "land" | "clear" | "boom" | "over" | "win";
 // Scale this with cells-per-block (B*B), not with total board area — it's
 // "how many blocks of one colour must connect", which is what a player feels.
 const CLEAR_SIZE = B * B * 8; // ~8 blocks of connected colour
+// A crowded canvas fragments into a dozen colours, and the biggest zone
+// stalls just under the bar — nothing can ever pop and the board deadlocks.
+// So thick paint runs: the fuller it gets, the less it takes to make it go.
+const CLEAR_SIZE_FLOODED = B * B * 2.5;
+const FLOOD_FROM = 0.5; // fill fraction where the threshold starts easing
+const FLOOD_TO = 0.88; // ...and where it bottoms out
+// Above this, the canvas must always be able to shed something: a crowded
+// board fragments into ever-smaller zones, so easing the bar alone can chase
+// a target it never catches and the game deadlocks.
+const DROWNING = 0.78;
 const CLEAR_ANIM = 32; // frames of glow before removal
 const COMBO_WINDOW = 300; // frames between clears that keep a combo alive
 const BOOM_RADIUS = 34;
@@ -179,6 +189,8 @@ export class Engine {
   softDrop = false;
   moveDir = 0; // -1 | 0 | 1, held horizontal movement
   piecesUsed = 0;
+  fill = 0; // fraction of the canvas covered in paint
+  flooding = false; // canvas crowded enough that paint is running
   progress: { color: number; pct: number; target: number }[] = [];
   onEvent: (e: EngineEvent, n?: number) => void = () => {};
 
@@ -703,13 +715,28 @@ export class Engine {
     }
   }
 
+  /** How much connected colour it currently takes to pop, given how flooded
+   *  the canvas is. Also drives the HUD hint. */
+  private clearThreshold(): number {
+    let filled = 0;
+    for (let i = 0; i < this.grid.length; i++) if (this.grid[i] !== P.Empty) filled++;
+    this.fill = filled / this.grid.length;
+    const t = Math.max(0, Math.min(1, (this.fill - FLOOD_FROM) / (FLOOD_TO - FLOOD_FROM)));
+    this.flooding = t > 0.5;
+    return CLEAR_SIZE + (CLEAR_SIZE_FLOODED - CLEAR_SIZE) * t;
+  }
+
   // Flood-fill connected same-colour zones (rainbow is a wildcard) and mark
   // big ones for clearing.
   private findZones() {
     const g = this.grid;
+    const need = this.clearThreshold();
     const seen = new Uint8Array(g.length);
     const stack: number[] = [];
     const zone: number[] = [];
+    let cleared = false;
+    let biggest: number[] = [];
+    let biggestColor = 0;
 
     for (let start = 0; start < g.length; start++) {
       const c0 = g[start];
@@ -730,18 +757,30 @@ export class Engine {
         if (i < g.length - COLS) this.tryFill(i + COLS, c0, seen, stack);
       }
 
-      if (zone.length >= CLEAR_SIZE) {
-        for (const i of zone) this.clearing[i] = CLEAR_ANIM;
-        this.combo = this.comboTimer > 0 ? this.combo + 1 : 1;
-        this.comboTimer = COMBO_WINDOW;
-        this.comboFlash = 120;
-        this.lastClearSize = zone.length;
-        this.score += zone.length * this.combo;
-        const cx = (zone[0] % COLS);
-        const cy = (zone[0] / COLS) | 0;
-        this.burstSparks(cx, cy, c0, 140);
+      if (zone.length >= need) {
+        this.popZone(zone, c0);
+        cleared = true;
+      } else if (this.fill > DROWNING && zone.length > biggest.length) {
+        biggest = zone.slice();
+        biggestColor = c0;
       }
     }
+
+    // Nothing could pop on a drowning canvas — shed the largest zone anyway
+    // so the board can never lock into an unplayable state.
+    if (!cleared && this.fill > DROWNING && biggest.length >= B * B) {
+      this.popZone(biggest, biggestColor);
+    }
+  }
+
+  private popZone(zone: number[], color: number) {
+    for (const i of zone) this.clearing[i] = CLEAR_ANIM;
+    this.combo = this.comboTimer > 0 ? this.combo + 1 : 1;
+    this.comboTimer = COMBO_WINDOW;
+    this.comboFlash = 120;
+    this.lastClearSize = zone.length;
+    this.score += zone.length * this.combo;
+    this.burstSparks(zone[0] % COLS, (zone[0] / COLS) | 0, color, 140);
   }
 
   private tryFill(j: number, c0: number, seen: Uint8Array, stack: number[]) {
