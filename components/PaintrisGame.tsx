@@ -12,7 +12,7 @@ import {
 
 const SCALE = 4; // canvas pixels per grid cell, before device pixel ratio
 
-type Screen = "menu" | "themes" | "puzzles" | "settings" | "scores" | "play" | "name" | "over";
+type Screen = "menu" | "themes" | "puzzles" | "settings" | "scores" | "rules" | "play" | "name" | "over";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -!";
 
@@ -589,6 +589,39 @@ export default function PaintrisGame() {
   const playing = screen === "play";
   const setup = setupRef.current;
 
+  // Shared so the rules read identically in the side panel and on the menu —
+  // the panel is hidden on phones, where they're needed most.
+  const scoringRules = (
+    <>
+      <p className="rule-step"><b>1.</b> Pool one colour until a connected
+        patch is about 8 blocks — it glows, then pops.</p>
+      <p className="rule-step"><b>2.</b> Points = patch size × chain number.</p>
+
+      <h4 className="rule-head">CHAINS · one landing, one chain</h4>
+      <ul className="chains">
+        <li><span className="n">1</span> SPLASH</li>
+        <li><span className="n">2</span> DOUBLE SPLASH</li>
+        <li><span className="n">3</span> TRIPLE SPLASH</li>
+        <li className="storm"><span className="n">4+</span> PAINTSTORM</li>
+      </ul>
+      <p className="rule-note">
+        A chain only grows when one pop causes the next, so spamming drop
+        won&apos;t build one.
+      </p>
+
+      <h4 className="rule-head">MIXING · blends pop too</h4>
+      <ul className="recipes">
+        <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#2f7fe8" }} />=<i style={{ background: "#9b4fd6" }} /> purple</li>
+        <li><i style={{ background: "#2f7fe8" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#3ec96e" }} /> green</li>
+        <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#f77f3a" }} /> orange</li>
+      </ul>
+      <p className="rule-note">
+        Colours blend where they touch and the blend spreads, so a mixed
+        patch can grow big enough to pop on its own.
+      </p>
+    </>
+  );
+
   return (
     <div
       className={`wrap${theme.light ? " light" : ""}`}
@@ -649,6 +682,9 @@ export default function PaintrisGame() {
               </button>
             </div>
             <div className="menu-secondary">
+              <button className="side-btn wide" onClick={() => setScreen("rules")}>
+                📖 HOW TO PLAY<small>scoring, chains and mixing</small>
+              </button>
               <button className="side-btn wide" onClick={() => setScreen("scores")}>
                 🏆 HIGH SCORES<small>every mode&apos;s hall of fame</small>
               </button>
@@ -773,6 +809,14 @@ export default function PaintrisGame() {
                 <span className="setting-go">›</span>
               </button>
             </div>
+            <button className="play ghost" onClick={() => setScreen("menu")}>BACK</button>
+          </div>
+        )}
+
+        {screen === "rules" && (
+          <div className="overlay" style={{ background: theme.overlay }}>
+            <h1 className="title small">HOW TO PLAY</h1>
+            <div className="rules-sheet">{scoringRules}</div>
             <button className="play ghost" onClick={() => setScreen("menu")}>BACK</button>
           </div>
         )}
@@ -916,16 +960,8 @@ export default function PaintrisGame() {
 
         <div className="box">
           <h3 className="box-title">HOW TO SCORE</h3>
-          <p className="box-line">
-            Big connected areas of one colour pop. If that pop makes another,
-            the chain counts: 2 is a double, 4+ is a <b>PAINTSTORM</b>, and the
-            chain number multiplies the points. One landing, one chain.
-          </p>
-          <ul className="recipes">
-            <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#2f7fe8" }} />=<i style={{ background: "#9b4fd6" }} /> purple</li>
-            <li><i style={{ background: "#2f7fe8" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#3ec96e" }} /> green</li>
-            <li><i style={{ background: "#e5344a" }} />+<i style={{ background: "#f7c948" }} />=<i style={{ background: "#f77f3a" }} /> orange</li>
-          </ul>
+
+          {scoringRules}
         </div>
         {/* movement on its own row, drop and hold below — easier to thumb */}
         <div className="touch">

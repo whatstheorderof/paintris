@@ -272,8 +272,12 @@ export class Engine {
   constructor(opts: EngineOpts = {}) {
     this.opts = opts;
     this.rnd = mulberry32(opts.seed ?? (Math.random() * 2 ** 32) | 0);
-    this.mixRate = 0.005 * (opts.mixBoost ?? 1);
-    this.stir = !!opts.stir;
+    // Stirring is on by default. Without it, blending only ever happens along
+    // the seam between two colours and the new colour then separates them, so
+    // mixed paint stayed as thin bands that never grew big enough to pop —
+    // measured zero mixed-colour clears in a full game. Now it can score.
+    this.mixRate = 0.005 * (opts.mixBoost ?? 0.6);
+    this.stir = opts.stir ?? true;
     this.next = this.makePiece();
     if (opts.targets) {
       this.progress = opts.targets.map((t) => ({ color: t.color, pct: 0, target: t.pct }));

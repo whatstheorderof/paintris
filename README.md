@@ -39,6 +39,10 @@ and pop. If a pop sets off another, the chain counts — two is a double, four o
 more is a **PAINTSTORM** — and the chain number multiplies the points. One
 landing, one chain, so a storm always means that drop caused it.
 
+Colours blend where they touch and the blend spreads through them, so a mixed
+patch can grow big enough to pop on its own — purple, green and orange all
+score in their own right.
+
 Sound comes in packs: **Paint Studio** for wet splats, or **Zen Garden**, which
 swaps every voice for pentatonic wind chimes over a soft drone and pairs well
 with Zen mode and the **Calm motion** setting.
