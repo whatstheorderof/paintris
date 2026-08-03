@@ -141,12 +141,17 @@ export default function PaintrisGame() {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") leave();
     };
+    // Only a genuine loss of focus counts — a stray blur while the window is
+    // still focused shouldn't interrupt a run.
+    const onBlur = () => {
+      if (!document.hasFocus()) leave();
+    };
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("blur", leave);
+    window.addEventListener("blur", onBlur);
     window.addEventListener("pagehide", leave);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("blur", leave);
+      window.removeEventListener("blur", onBlur);
       window.removeEventListener("pagehide", leave);
     };
   }, []);

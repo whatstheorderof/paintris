@@ -207,6 +207,11 @@ const SOFT_DROP = B * 0.79; // cells per frame while held
 const STEP = Math.round(B / 2); // cells per step — two steps to a block
 const DAS_DELAY = 10; // frames held before auto-repeat starts (~170ms)
 const DAS_REPEAT = 4; // frames between repeats (~67ms)
+// A piece rests before it locks, so you always get a moment to place it. Time
+// to land otherwise shrinks with the stack — under half a second near the top,
+// which is where the board used to jam up.
+const LOCK_DELAY = 34; // frames resting before it sticks (~0.55s)
+const LOCK_RESETS = 10; // how many times moving may restart that clock
 const OVERLAP_SLACK = Math.round(B * B * 0.046); // stray cells a piece plows through
 // Canvas-full backstop, measured as the share of COLUMNS whose top two rows
 // hold paint. Counting cells instead would miss a narrow tower that reaches
@@ -245,6 +250,8 @@ export class Engine {
   moveDir = 0; // -1 | 0 | 1, held horizontal movement
   private heldDir = 0;
   private dasFrames = 0;
+  private lockFrames = 0;
+  private lockResets = 0;
   piecesUsed = 0;
   fill = 0; // fraction of the canvas covered in paint
   flooding = false; // canvas crowded enough that paint is running
@@ -312,7 +319,11 @@ export class Engine {
   private placeAtSpawn(p: Piece) {
     const w = Math.max(...p.blocks.map((b) => b[0])) + 1;
     p.x = Math.floor((COLS - w * B) / 2 / 2) * 2;
-    p.y = -(Math.max(...p.blocks.map((b) => b[1])) + 1) * B;
+    // Spawn on the canvas rather than above it, so the piece is visible and
+    // steerable from the moment it appears.
+    p.y = 0;
+    this.lockFrames = 0;
+    this.lockResets = 0;
   }
 
   spawn() {
@@ -327,10 +338,9 @@ export class Engine {
     this.piece = this.next;
     this.next = this.makePiece();
     this.placeAtSpawn(this.piece);
-  }
-
-  private pieceHeight(p: Piece): number {
-    return (Math.max(...p.blocks.map((b) => b[1])) + 1) * B;
+    // Pieces now spawn on the canvas, so this test is meaningful: no room to
+    // put the next piece is what "you hit the top" means.
+    if (!this.opts.zen && this.collides(this.piece, 0, 0)) this.endGame();
   }
 
   // stash the current piece; bring out the held one (or the next)
@@ -417,9 +427,21 @@ export class Engine {
   private stepSideways(dir: number) {
     const p = this.piece;
     if (!p) return;
+    let moved = 0;
     for (let k = 0; k < STEP; k++) {
-      if (this.collides(p, dir, 0)) return;
+      if (this.collides(p, dir, 0)) break;
       p.x += dir;
+      moved++;
+    }
+    if (moved) this.touchLock();
+  }
+
+  /** Placing the piece restarts the lock clock, up to a limit so it can't be
+   *  stalled indefinitely. */
+  private touchLock() {
+    if (this.lockFrames > 0 && this.lockResets < LOCK_RESETS) {
+      this.lockFrames = 0;
+      this.lockResets++;
     }
   }
 
@@ -436,6 +458,7 @@ export class Engine {
     for (const dx of [0, -B, B, -2 * B, 2 * B]) {
       if (!this.collides(p, dx, 0)) {
         p.x += dx;
+        this.touchLock();
         return;
       }
     }
@@ -460,14 +483,6 @@ export class Engine {
   private land() {
     const p = this.piece!;
     this.piece = null;
-
-    // Lock out: the stack is so high the piece came to rest without any part
-    // of it reaching the canvas. Pieces spawn above row 0, so this — not a
-    // test at the spawn position — is what "you hit the top" means here.
-    if (!this.opts.zen && p.y + this.pieceHeight(p) <= 0) {
-      this.endGame();
-      return;
-    }
 
     // A chain belongs to exactly one landing, so a combo always means "this
     // drop set off that much". Keeping the chain alive while clears merely
@@ -620,7 +635,14 @@ export class Engine {
         this.piece.y++;
         moved++;
       }
-      if (moved < fall) this.land();
+      // Resting on the stack doesn't lock it straight away — you get a beat to
+      // slide or turn it, which is the only reason the top of the board stays
+      // playable once pieces have almost no room to fall.
+      if (this.collides(this.piece, 0, 1)) {
+        if (++this.lockFrames >= LOCK_DELAY) this.land();
+      } else {
+        this.lockFrames = 0;
+      }
     }
 
     this.stepPaint();
