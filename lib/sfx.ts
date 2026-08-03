@@ -42,6 +42,17 @@ export class Sfx {
     if (this.ctx.state === "suspended") this.ctx.resume();
   }
 
+  /** Silence everything without tearing the graph down, for when the player
+   *  leaves the tab. */
+  suspend() {
+    if (this.ctx && this.ctx.state === "running") this.ctx.suspend();
+  }
+
+  resume() {
+    if (this.muted) return;
+    this.ensure();
+  }
+
   private impulse(seconds: number): AudioBuffer {
     const ctx = this.ctx!;
     const len = Math.floor(ctx.sampleRate * seconds);

@@ -721,13 +721,15 @@ export class Engine {
           continue;
         }
 
-        // frozen paint is temporarily solid — it still falls, but never
-        // spreads or mixes, and eventually thaws into water-blue
+        // Frozen paint is briefly solid — it falls but never spreads or
+        // mixes, then thaws into water-blue. Keep the thaw quick: it used to
+        // average fourteen seconds, long enough that it sat there holding a
+        // hard rectangle while every other colour had flowed into strata.
         if (c === P.Frozen) {
           if (g[below] === P.Empty) {
             g[below] = c;
             g[i] = P.Empty;
-          } else if (this.rnd() < 0.0012) {
+          } else if (this.rnd() < 0.0065) {
             g[i] = P.Blue;
           }
           continue;

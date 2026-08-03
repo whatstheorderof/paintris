@@ -101,6 +101,10 @@ export default function PaintrisGame() {
   const [slot, setSlot] = useState(0);
   const [scoreTab, setScoreTab] = useState("classic");
   const pendingKey = useRef<string | null>(null);
+  // Paused when the player leaves the tab — a phone call shouldn't cost a run.
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
 
   const theme: Theme = THEMES.find((t) => t.id === save.theme) ?? THEMES[0];
   const themeRef = useRef(theme);
@@ -125,6 +129,36 @@ export default function PaintrisGame() {
     setScreenState(s);
   };
 
+  // Leaving the tab pauses the run rather than letting it play on unseen.
+  useEffect(() => {
+    const leave = () => {
+      if (screenRef.current !== "play" || pausedRef.current) return;
+      pausedRef.current = true;
+      setPaused(true);
+      sfxRef.current.setAmbience(false);
+      sfxRef.current.suspend();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") leave();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", leave);
+    window.addEventListener("pagehide", leave);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", leave);
+      window.removeEventListener("pagehide", leave);
+    };
+  }, []);
+
+  const resume = () => {
+    setPaused(false);
+    pausedRef.current = false;
+    const sfx = sfxRef.current;
+    sfx.resume();
+    sfx.setAmbience(save.soundPack === "zen");
+  };
+
   // Takes an updater so rapid clicks compose instead of overwriting each
   // other with a stale snapshot; the effect above writes it to storage.
   const updateSave = (fn: (prev: SaveData) => SaveData) => setSave(fn);
@@ -146,6 +180,8 @@ export default function PaintrisGame() {
     // scoring in the background after you walked away, and the panel counter
     // carried on climbing on the menu.
     e.finish();
+    setPaused(false);
+    pausedRef.current = false;
     sfxRef.current.setAmbience(false);
     const setup = setupRef.current;
     const puzzleId = setup.puzzle?.id;
@@ -191,6 +227,8 @@ export default function PaintrisGame() {
       if (ev === "over") endGameRef.current(setupRef.current.mode === "puzzle" ? "lose" : "full");
     };
     e.spawn();
+    setPaused(false);
+    pausedRef.current = false;
     engineRef.current = e;
     if (typeof window !== "undefined") (window as unknown as { __paintris: Engine }).__paintris = e;
     sfxRef.current.setAmbience(save.soundPack === "zen");
@@ -299,7 +337,7 @@ export default function PaintrisGame() {
     // animation frames. The engine regulates its own 60Hz internally.
     const sim = setInterval(() => {
       const e = engineRef.current;
-      if (!e) return;
+      if (!e || pausedRef.current) return;
       e.step();
       if (e.frame % 10 === 0) {
         setHud({
@@ -487,6 +525,14 @@ export default function PaintrisGame() {
         return;
       }
       if (screen !== "play" || !e) return;
+      // while paused, the only thing the keyboard does is un-pause
+      if (pausedRef.current) {
+        if (ev.key === "Enter" || ev.key === " " || ev.key === "Escape") {
+          ev.preventDefault();
+          resume();
+        }
+        return;
+      }
       // ignore the OS key-repeat; the engine runs its own auto-repeat
       if (ev.key === "ArrowLeft" || ev.key === "a") { if (!ev.repeat) e.press(-1); }
       else if (ev.key === "ArrowRight" || ev.key === "d") { if (!ev.repeat) e.press(1); }
@@ -548,7 +594,18 @@ export default function PaintrisGame() {
             larger so the board stays sharp as it scales up */}
         <canvas ref={canvasRef} style={{ aspectRatio: `${COLS} / ${ROWS}` }} />
 
-        {playing && hud.flooding && (
+        {playing && paused && (
+          <div className="overlay" style={{ background: theme.overlay }}>
+            <h1 className="title small">PAUSED</h1>
+            <p className="tag">the paint is waiting for you</p>
+            <button className="play" onClick={resume}>RESUME</button>
+            <button className="play ghost" onClick={() => { resume(); endGameRef.current("end"); }}>
+              END SESSION
+            </button>
+          </div>
+        )}
+
+        {playing && !paused && hud.flooding && (
           <div className="flooding">PAINT RUNNING · zones pop sooner</div>
         )}
 
@@ -872,10 +929,11 @@ export default function PaintrisGame() {
             {btn("⟳", () => engineRef.current?.rotate())}
             {btn("→", () => {}, (on) => (on ? engineRef.current?.press(1) : engineRef.current?.release(1)))}
           </div>
+          {/* No soft-drop button: two near-identical down arrows confused
+              people, and slam covers it. Soft drop is still on the ↓ key. */}
           <div className="touch-row">
-            {btn("▼", () => {}, (on) => { if (engineRef.current) engineRef.current.softDrop = on; })}
-            {btn("⤓", () => engineRef.current?.hardDrop())}
-            {btn("⇄", () => engineRef.current?.hold())}
+            {btn("⤓ drop", () => engineRef.current?.hardDrop())}
+            {btn("⇄ hold", () => engineRef.current?.hold())}
           </div>
         </div>
         <div className="panel-actions">
@@ -883,6 +941,11 @@ export default function PaintrisGame() {
             {save.soundPack === "off" ? "🔇" : save.soundPack === "zen" ? "🎐" : "🔊"}{" "}
             {PACKS.find((p) => p.id === save.soundPack)?.name.toLowerCase()}
           </button>
+          {playing && (
+            <button className="endbtn" onClick={() => { pausedRef.current = true; setPaused(true); sfxRef.current.suspend(); }}>
+              ❙❙ pause
+            </button>
+          )}
           {playing && (
             <button className="endbtn" onClick={() => endGameRef.current("end")}>■ end session</button>
           )}
