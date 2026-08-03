@@ -107,6 +107,16 @@ function mixOf(a: number, b: number): number {
   return 0;
 }
 
+// The two primaries a secondary was mixed from. Blending only ever happens at
+// the boundary between two colours, and the new colour then separates them —
+// which caps how much you can ever make. Letting a secondary keep recruiting
+// its own parents is what stirring does, and it lifts that cap.
+const PARENTS: Record<number, [number, number]> = {
+  [P.Purple]: [P.Red, P.Blue],
+  [P.Green]: [P.Blue, P.Yellow],
+  [P.Orange]: [P.Red, P.Yellow],
+};
+
 // Colours that can form clearable zones (rainbow joins them as a wildcard).
 function zoneColor(c: number): boolean {
   return (
@@ -150,6 +160,18 @@ export interface EngineOpts {
   budget?: number; // piece limit (puzzle mode)
   targets?: { color: number; pct: number }[]; // colour coverage goals
   plainPieces?: boolean; // no special paints (puzzle mode)
+  /** Puzzles are about composing a picture, so paint must stay put — zones
+   *  popping would delete the very colour you are trying to accumulate. */
+  noClears?: boolean;
+  /** Restrict the piece colours, so a puzzle can actually supply what it asks
+   *  for instead of drawing evenly from every colour. */
+  palette?: number[];
+  /** Multiplier on how readily touching colours blend. Puzzles that ask you
+   *  to mix need far more of it than the ambient trace amount. */
+  mixBoost?: number;
+  /** Let a mixed colour keep recruiting the primaries it came from, so a
+   *  mixing puzzle can reach a real share of the canvas. */
+  stir?: boolean;
 }
 
 export type EngineEvent = "land" | "clear" | "boom" | "over" | "win" | "level";
@@ -228,12 +250,16 @@ export class Engine {
 
   private rnd: () => number;
   readonly opts: EngineOpts;
+  private mixRate = 0.005;
+  private stir = false;
   private fallAcc = 0;
   private settleTimer = -1; // countdown after the piece budget runs out
 
   constructor(opts: EngineOpts = {}) {
     this.opts = opts;
     this.rnd = mulberry32(opts.seed ?? (Math.random() * 2 ** 32) | 0);
+    this.mixRate = 0.005 * (opts.mixBoost ?? 1);
+    this.stir = !!opts.stir;
     this.next = this.makePiece();
     if (opts.targets) {
       this.progress = opts.targets.map((t) => ({ color: t.color, pct: 0, target: t.pct }));
@@ -253,7 +279,10 @@ export class Engine {
     const r = this.rnd();
     let color: number;
     const base = [P.Red, P.Blue, P.Yellow, P.Green, P.Purple, P.Orange];
-    if (this.opts.plainPieces) {
+    const pool = this.opts.palette;
+    if (pool && pool.length) {
+      color = pool[(this.rnd() * pool.length) | 0];
+    } else if (this.opts.plainPieces) {
       color = r < 0.1 ? P.Black : base[(this.rnd() * base.length) | 0];
     } else if (r < 0.025) color = P.Rainbow;
     else if (r < 0.05) color = P.Explosive;
@@ -564,7 +593,7 @@ export class Engine {
     this.stepPaint();
     this.stepClearing();
     if (!this.ended && this.frame % 30 === 0) {
-      this.findZones();
+      if (!this.opts.noClears) this.findZones();
       this.checkTargets();
     }
 
@@ -628,6 +657,12 @@ export class Engine {
     if (this.progress.every((p) => p.pct >= p.target)) {
       this.won = true;
       this.piece = null;
+      // Puzzles earn nothing from zone pops because they have none, so the
+      // finish itself scores — and the fewer pieces it took, the better.
+      if (this.opts.budget != null) {
+        const spare = Math.max(0, this.opts.budget - this.piecesUsed);
+        this.score += 2000 + spare * 400;
+      }
       this.onEvent("win");
     }
   }
@@ -737,7 +772,8 @@ export class Engine {
         }
 
         // settled: wet neighbours of mixable colours slowly blend
-        if (this.rnd() < 0.005) {
+        if (this.rnd() < this.mixRate) {
+          const parents = this.stir ? PARENTS[c] : undefined;
           for (const d of [1, -1, COLS, -COLS]) {
             const j = i + d;
             if (j < 0 || j >= g.length) continue;
@@ -747,6 +783,11 @@ export class Engine {
             if (m) {
               g[i] = m;
               g[j] = m;
+              break;
+            }
+            // stirred paint keeps taking up the colours it came from
+            if (parents && (g[j] === parents[0] || g[j] === parents[1])) {
+              g[j] = c;
               break;
             }
           }

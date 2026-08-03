@@ -69,24 +69,33 @@ export interface PuzzleDef {
   budget: number; // pieces available
   seed: number;
   targets: { color: number; pct: number }[];
+  /** Colours the pieces are drawn from. A puzzle has to actually supply what
+   *  it asks for — drawing evenly from all six made the goals unreachable. */
+  palette: number[];
 }
 
 export const PUZZLES: PuzzleDef[] = [
+  // Targets are set from measured play: reachable when you interleave the
+  // colours well, missable when you dump them in separate heaps.
   {
-    id: 1, name: "Purple Rain", blurb: "mix red into blue", budget: 26, seed: 101,
-    targets: [{ color: P.Purple, pct: 30 }],
+    id: 1, name: "Purple Rain", blurb: "interleave red and blue", budget: 26, seed: 101,
+    palette: [P.Red, P.Blue],
+    targets: [{ color: P.Purple, pct: 25 }],
   },
   {
-    id: 2, name: "Go Green", blurb: "drown yellow in blue", budget: 26, seed: 202,
-    targets: [{ color: P.Green, pct: 40 }],
+    id: 2, name: "Go Green", blurb: "stir yellow through blue", budget: 26, seed: 202,
+    palette: [P.Blue, P.Yellow],
+    targets: [{ color: P.Green, pct: 32 }],
   },
   {
     id: 3, name: "Blackout", blurb: "keep the dark stuff", budget: 22, seed: 303,
-    targets: [{ color: P.Black, pct: 28 }],
+    palette: [P.Black, P.Black, P.Blue, P.Red],
+    targets: [{ color: P.Black, pct: 48 }],
   },
   {
     id: 4, name: "Sunset", blurb: "orange sky, red horizon", budget: 30, seed: 404,
-    targets: [{ color: P.Orange, pct: 28 }, { color: P.Red, pct: 14 }],
+    palette: [P.Red, P.Red, P.Yellow],
+    targets: [{ color: P.Orange, pct: 20 }, { color: P.Red, pct: 30 }],
   },
 ];
 

@@ -44,7 +44,10 @@ function engineOpts(setup: Setup): EngineOpts {
     case "daily": return { ramp: true, seed: dailySeed() };
     case "puzzle": {
       const p = setup.puzzle!;
-      return { seed: p.seed, budget: p.budget, targets: p.targets, plainPieces: true };
+      return {
+        seed: p.seed, budget: p.budget, targets: p.targets,
+        palette: p.palette, noClears: true, mixBoost: 2, stir: true,
+      };
     }
   }
 }

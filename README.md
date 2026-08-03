@@ -74,7 +74,10 @@ bridge holes. Black is dense and makes a good blocker. Yellow is light.
 - **Zen** — no losing, slower pour, just paint
 - **Rush** — everything falls more than twice as fast
 - **Daily** — everyone gets the same piece sequence for the day
-- **Puzzle** — hit colour coverage targets on a fixed piece budget
+- **Puzzle** — hit colour coverage targets on a fixed piece budget. Each
+  puzzle hands you a restricted palette and nothing pops, so the canvas keeps
+  everything you put on it: interleave the colours to blend what you need, and
+  score higher the fewer pieces you spend
 
 Beat a mode's top five and you get to punch in three initials, arcade style.
 Every mode keeps its own board — dailies reset each day and each puzzle tracks
