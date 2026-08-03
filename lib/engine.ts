@@ -201,7 +201,12 @@ const BOOM_RADIUS = Math.round(B * 2.43);
 const PULSE_RADIUS = Math.round(B * 1.93); // white push / magnetic pull
 const MIN_PAINT_FOR_TARGETS = COLS * ROWS * 0.18; // goals need a real painting
 const SOFT_DROP = B * 0.79; // cells per frame while held
-const SLIDE = Math.max(2, Math.round(B * 0.214)); // cells per frame sideways
+// Sideways movement is stepped, not a continuous slide. A tap moves one
+// definite step; holding waits, then repeats. Sliding meant a tap did almost
+// nothing and a hold overshot, which is unusable on a touchscreen.
+const STEP = Math.round(B / 2); // cells per step — two steps to a block
+const DAS_DELAY = 10; // frames held before auto-repeat starts (~170ms)
+const DAS_REPEAT = 4; // frames between repeats (~67ms)
 const OVERLAP_SLACK = Math.round(B * B * 0.046); // stray cells a piece plows through
 // Canvas-full backstop, measured as the share of COLUMNS whose top two rows
 // hold paint. Counting cells instead would miss a narrow tower that reaches
@@ -238,6 +243,8 @@ export class Engine {
   won = false;
   softDrop = false;
   moveDir = 0; // -1 | 0 | 1, held horizontal movement
+  private heldDir = 0;
+  private dasFrames = 0;
   piecesUsed = 0;
   fill = 0; // fraction of the canvas covered in paint
   flooding = false; // canvas crowded enough that paint is running
@@ -358,9 +365,9 @@ export class Engine {
 
   private speed(): number {
     let s = this.opts.baseSpeed ?? FALL_BASE;
-    // Gentler than it was: reaches about 1.7x around eighty pieces rather
-    // than running away inside a single short game.
-    if (this.opts.ramp) s += Math.min(FALL_BASE * 1.2, this.piecesUsed * FALL_BASE * 0.009);
+    // Gentle enough that a normal-length run barely notices it: about 1.2x by
+    // forty pieces, and it takes well over a hundred to reach the cap.
+    if (this.opts.ramp) s += Math.min(FALL_BASE * 0.9, this.piecesUsed * FALL_BASE * 0.006);
     if (this.opts.levels) s += Math.min(FALL_BASE * 1.6, (this.level - 1) * FALL_BASE * 0.11);
     return s;
   }
@@ -388,6 +395,32 @@ export class Engine {
       }
     }
     return false;
+  }
+
+  /** Begin moving. Steps once straight away so a quick tap always registers,
+   *  however briefly the button was down. */
+  press(dir: -1 | 1) {
+    this.moveDir = dir;
+    this.heldDir = dir;
+    this.dasFrames = DAS_DELAY;
+    if (!this.ended) this.stepSideways(dir);
+  }
+
+  release(dir: -1 | 1) {
+    if (this.moveDir === dir) {
+      this.moveDir = 0;
+      this.heldDir = 0;
+    }
+  }
+
+  /** Move one step sideways, or as far of it as fits. */
+  private stepSideways(dir: number) {
+    const p = this.piece;
+    if (!p) return;
+    for (let k = 0; k < STEP; k++) {
+      if (this.collides(p, dir, 0)) return;
+      p.x += dir;
+    }
   }
 
   rotate() {
@@ -574,10 +607,10 @@ export class Engine {
     this.frame++;
 
     if (!this.ended && this.piece) {
-      if (this.moveDir !== 0) {
-        for (let k = 0; k < SLIDE; k++) {
-          if (!this.collides(this.piece, this.moveDir, 0)) this.piece.x += this.moveDir;
-        }
+      // press() already made the first step; this is the auto-repeat
+      if (this.moveDir !== 0 && --this.dasFrames <= 0) {
+        this.stepSideways(this.moveDir);
+        this.dasFrames = DAS_REPEAT;
       }
       this.fallAcc += this.softDrop ? SOFT_DROP : this.speed();
       let fall = this.fallAcc | 0;

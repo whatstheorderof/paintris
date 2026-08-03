@@ -37,7 +37,7 @@ function rainbow(t: number): [number, number, number] {
 
 function engineOpts(setup: Setup): EngineOpts {
   switch (setup.mode) {
-    case "classic": return { ramp: true };
+    case "classic": return { ramp: true, baseSpeed: FALL_BASE * 0.8 };
     case "levels": return { levels: true, baseSpeed: FALL_BASE * 0.85 };
     case "zen": return { zen: true, baseSpeed: FALL_BASE * 0.8 };
     case "rush": return { ramp: true, baseSpeed: FALL_BASE * 2.2 };
@@ -388,8 +388,10 @@ export default function PaintrisGame() {
       // active piece on top
       if (bakePiece && e?.piece) {
         const p = e.piece;
-        const [r, g, b] = p.color === P.Rainbow ? rainbow(t) : RGB[p.color];
         for (const [bx, by] of p.blocks) {
+          const [r, g, b] = p.color === P.Rainbow
+            ? rainbow(t + (bx * 2 + by) * 26)
+            : RGB[p.color];
           for (let y = 0; y < B; y++) {
             const gy = p.y + by * B + y;
             if (gy < 0 || gy >= ROWS) continue;
@@ -438,9 +440,14 @@ export default function PaintrisGame() {
           const pctx = cv.getContext("2d")!;
           pctx.clearRect(0, 0, cv.width, cv.height);
           if (!piece) return;
-          const [r, g, b] = piece.color === P.Rainbow ? rainbow(t) : RGB[piece.color];
-          pctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
-          for (const [bx, by] of piece.blocks) pctx.fillRect(4 + bx * 14, 4 + by * 14, 12, 12);
+          for (const [bx, by] of piece.blocks) {
+            // rainbow reads as a spectrum across the blocks, not one flat hue
+            const [r, g, b] = piece.color === P.Rainbow
+              ? rainbow(t + (bx * 2 + by) * 26)
+              : RGB[piece.color];
+            pctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
+            pctx.fillRect(4 + bx * 14, 4 + by * 14, 12, 12);
+          }
         };
         drawPreview(nextRef.current, e.next);
         drawPreview(holdRef.current, e.held);
@@ -480,8 +487,9 @@ export default function PaintrisGame() {
         return;
       }
       if (screen !== "play" || !e) return;
-      if (ev.key === "ArrowLeft" || ev.key === "a") e.moveDir = -1;
-      else if (ev.key === "ArrowRight" || ev.key === "d") e.moveDir = 1;
+      // ignore the OS key-repeat; the engine runs its own auto-repeat
+      if (ev.key === "ArrowLeft" || ev.key === "a") { if (!ev.repeat) e.press(-1); }
+      else if (ev.key === "ArrowRight" || ev.key === "d") { if (!ev.repeat) e.press(1); }
       else if ((ev.key === "ArrowUp" || ev.key === "w" || ev.key === "x") && !ev.repeat) e.rotate();
       else if (ev.key === "ArrowDown" || ev.key === "s") e.softDrop = true;
       else if (ev.key === " " && !ev.repeat) { ev.preventDefault(); e.hardDrop(); }
@@ -492,8 +500,8 @@ export default function PaintrisGame() {
       const e = engineRef.current;
       if (!e) return;
       if (ev.key === "ArrowDown" || ev.key === "s") e.softDrop = false;
-      else if ((ev.key === "ArrowLeft" || ev.key === "a") && e.moveDir === -1) e.moveDir = 0;
-      else if ((ev.key === "ArrowRight" || ev.key === "d") && e.moveDir === 1) e.moveDir = 0;
+      else if (ev.key === "ArrowLeft" || ev.key === "a") e.release(-1);
+      else if (ev.key === "ArrowRight" || ev.key === "d") e.release(1);
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -860,9 +868,9 @@ export default function PaintrisGame() {
         {/* movement on its own row, drop and hold below — easier to thumb */}
         <div className="touch">
           <div className="touch-row">
-            {btn("←", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? -1 : 0; })}
+            {btn("←", () => {}, (on) => (on ? engineRef.current?.press(-1) : engineRef.current?.release(-1)))}
             {btn("⟳", () => engineRef.current?.rotate())}
-            {btn("→", () => {}, (on) => { if (engineRef.current) engineRef.current.moveDir = on ? 1 : 0; })}
+            {btn("→", () => {}, (on) => (on ? engineRef.current?.press(1) : engineRef.current?.release(1)))}
           </div>
           <div className="touch-row">
             {btn("▼", () => {}, (on) => { if (engineRef.current) engineRef.current.softDrop = on; })}

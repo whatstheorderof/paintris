@@ -127,7 +127,12 @@ export async function createPixiRenderer(
       pieceGfx.clear();
       if (!p) return;
       const px = p.cell * scale; // block edge in logical pixels
-      const hex = hexOf(p.color, t, 0);
+      // Rainbow paint has to look like rainbow while it falls, not a single
+      // cycling hue that only becomes a spectrum once it lands.
+      const rainbowPiece = p.color === P.Rainbow;
+      const hueAt = (bx: number, by: number) =>
+        rainbowPiece ? hexOf(P.Rainbow, t + (bx * 2 + by) * 26, 0) : hexOf(p.color, t, 0);
+      const hex = hueAt(0, 0);
       const r = Math.max(2, px * 0.13);
 
       if (p.ghostDy > p.cell) {
@@ -145,7 +150,7 @@ export async function createPixiRenderer(
       for (const [bx, by] of p.blocks) {
         const X = (p.x + bx * p.cell) * scale;
         const Y = (p.y + by * p.cell) * scale;
-        pieceGfx.beginFill(hex).drawRoundedRect(X, Y, px, px, r).endFill();
+        pieceGfx.beginFill(hueAt(bx, by)).drawRoundedRect(X, Y, px, px, r).endFill();
         // wet-paint shading: bright top face, shadowed underside
         pieceGfx.beginFill(0xffffff, 0.24)
           .drawRoundedRect(X + px * 0.1, Y + px * 0.08, px * 0.8, px * 0.28, r * 0.7).endFill();
