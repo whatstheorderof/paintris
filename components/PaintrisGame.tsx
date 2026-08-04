@@ -100,6 +100,7 @@ export default function PaintrisGame() {
   const [initials, setInitials] = useState(["A", "A", "A"]);
   const [slot, setSlot] = useState(0);
   const [scoreTab, setScoreTab] = useState("classic");
+  const [pauseTab, setPauseTab] = useState<"controls" | "scoring" | "sound">("controls");
   const pendingKey = useRef<string | null>(null);
   // Paused when the player leaves the tab — a phone call shouldn't cost a run.
   const [paused, setPaused] = useState(false);
@@ -124,13 +125,15 @@ export default function PaintrisGame() {
     prevPack.current = save.soundPack;
   }, [save.soundPack]);
 
-  // The background bed runs independently of the pack, so it keeps playing
-  // even with game sounds off.
+  // The background bed layers under any pack, but Silent is a master mute —
+  // it stops the music too. The choice is remembered, so leaving Silent
+  // brings the same bed back.
   useEffect(() => {
     const sfx = sfxRef.current;
-    if (save.ambience !== "off") sfx.ensure();
-    if (sfx.ambience !== save.ambience) sfx.setAmbient(save.ambience);
-  }, [save.ambience]);
+    const want = save.soundPack === "off" ? "off" : save.ambience;
+    if (want !== "off") sfx.ensure();
+    if (sfx.ambience !== want) sfx.setAmbient(want);
+  }, [save.ambience, save.soundPack]);
 
   const setScreen = (s: Screen) => {
     screenRef.current = s;
@@ -597,6 +600,45 @@ export default function PaintrisGame() {
   const playing = screen === "play";
   const setup = setupRef.current;
 
+  // Shared between the settings screen and the pause menu.
+  const soundSettings = (
+    <>
+      <div className="setting-block">
+        <span className="setting-name">🔊 Sound</span>
+        <div className="pack-list">
+          {PACKS.map((p) => (
+            <button
+              key={p.id}
+              className={`pack${save.soundPack === p.id ? " on" : ""}`}
+              onClick={() => setPack(p.id)}
+            >
+              <span className="pack-name">{p.name}</span>
+              <small>{p.blurb}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={`setting-block${save.soundPack === "off" ? " dimmed" : ""}`}>
+        <span className="setting-name">🎵 Background music</span>
+        {save.soundPack === "off" && (
+          <small className="block-note">Silent mutes this too — pick a sound to bring it back.</small>
+        )}
+        <div className="pack-list">
+          {AMBIENCES.map((a) => (
+            <button
+              key={a.id}
+              className={`pack${save.ambience === a.id ? " on" : ""}`}
+              onClick={() => updateSave((prev) => ({ ...prev, ambience: a.id as AmbienceId }))}
+            >
+              <span className="pack-name">{a.name}</span>
+              <small>{a.blurb}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
   // Shared so the rules read identically in the side panel and on the menu —
   // the panel is hidden on phones, where they're needed most.
   const scoringRules = (
@@ -641,22 +683,44 @@ export default function PaintrisGame() {
         <canvas ref={canvasRef} style={{ aspectRatio: `${COLS} / ${ROWS}` }} />
 
         {playing && paused && (
-          <div className="overlay" style={{ background: theme.overlay }}>
+          <div className="overlay paused-overlay" style={{ background: theme.overlay }}>
             <h1 className="title small">PAUSED</h1>
             <button className="play" onClick={resume}>RESUME</button>
-            {/* the side panel is hidden on phones, so the reference lives here */}
-            <div className="rules-sheet">
-              <h4 className="rule-head">CONTROLS</h4>
-              <ul className="keylist">
-                <li><span className="keys"><kbd>←</kbd><kbd>→</kbd></span> move</li>
-                <li><span className="keys"><kbd>↑</kbd></span> rotate</li>
-                <li><span className="keys"><kbd>↓</kbd></span> soft drop</li>
-                <li><span className="keys"><kbd>space</kbd></span> slam down</li>
-                <li><span className="keys"><kbd>C</kbd></span> hold piece</li>
-              </ul>
-              <h4 className="rule-head">HOW TO SCORE</h4>
-              {scoringRules}
+
+            {/* Tabbed, because the side panel that normally carries this is
+                hidden on phones and stacking it all made a long scroll. */}
+            <div className="tabs">
+              {([["controls", "CONTROLS"], ["scoring", "SCORING"], ["sound", "SOUND"]] as const).map(
+                ([id, label]) => (
+                  <button
+                    key={id}
+                    className={`tab${pauseTab === id ? " on" : ""}`}
+                    onClick={() => setPauseTab(id)}
+                  >
+                    {label}
+                  </button>
+                )
+              )}
             </div>
+
+            <div className="pause-panel">
+              {pauseTab === "controls" && (
+                <>
+                  <p className="rule-note">On a phone, use the buttons below the board.</p>
+                  <ul className="keylist">
+                    <li><span className="keys"><kbd>←</kbd><kbd>→</kbd></span> move</li>
+                    <li><span className="keys"><kbd>↑</kbd></span> rotate</li>
+                    <li><span className="keys"><kbd>↓</kbd></span> soft drop</li>
+                    <li><span className="keys"><kbd>space</kbd></span> slam down</li>
+                    <li><span className="keys"><kbd>C</kbd></span> hold piece</li>
+                    <li><span className="keys"><kbd>esc</kbd></span> end session</li>
+                  </ul>
+                </>
+              )}
+              {pauseTab === "scoring" && scoringRules}
+              {pauseTab === "sound" && <div className="settings-list">{soundSettings}</div>}
+            </div>
+
             <button className="play ghost" onClick={() => { resume(); endGameRef.current("end"); }}>
               END SESSION
             </button>
@@ -786,36 +850,7 @@ export default function PaintrisGame() {
           <div className="overlay" style={{ background: theme.overlay }}>
             <h1 className="title small">SETTINGS</h1>
             <div className="settings-list">
-              <div className="setting-block">
-                <span className="setting-name">🔊 Sound</span>
-                <div className="pack-list">
-                  {PACKS.map((p) => (
-                    <button
-                      key={p.id}
-                      className={`pack${save.soundPack === p.id ? " on" : ""}`}
-                      onClick={() => setPack(p.id)}
-                    >
-                      <span className="pack-name">{p.name}</span>
-                      <small>{p.blurb}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="setting-block">
-                <span className="setting-name">🎵 Background music</span>
-                <div className="pack-list">
-                  {AMBIENCES.map((a) => (
-                    <button
-                      key={a.id}
-                      className={`pack${save.ambience === a.id ? " on" : ""}`}
-                      onClick={() => updateSave((prev) => ({ ...prev, ambience: a.id as AmbienceId }))}
-                    >
-                      <span className="pack-name">{a.name}</span>
-                      <small>{a.blurb}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {soundSettings}
               <button
                 className={`setting-row${save.reducedMotion ? " on" : ""}`}
                 onClick={() => updateSave((prev) => ({ ...prev, reducedMotion: !prev.reducedMotion }))}

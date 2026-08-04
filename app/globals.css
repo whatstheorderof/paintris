@@ -527,6 +527,41 @@ kbd {
   background: rgba(127, 127, 127, 0.16);
 }
 
+/* ---- pause menu ---- */
+
+.paused-overlay { gap: 11px; }
+
+.pause-panel {
+  width: 100%;
+  max-width: 330px;
+  text-align: left;
+  background: rgba(127, 127, 127, 0.13);
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 12px;
+  padding: 13px 15px;
+  max-height: 44vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* the first heading in a panel shouldn't push the content down */
+.pause-panel > .rule-head:first-child,
+.pause-panel > .rule-step:first-child { margin-top: 0; }
+
+.pause-panel .settings-list { gap: 8px; }
+.pause-panel .setting-block { padding: 10px 11px; gap: 7px; }
+.pause-panel .pack { padding: 7px 9px; }
+.pause-panel .keylist { gap: 8px; }
+
+.setting-block.dimmed .pack-list { opacity: 0.4; }
+
+.block-note {
+  font-size: 9px;
+  line-height: 1.35;
+  opacity: 0.65;
+  display: block;
+}
+
 .rules-sheet {
   width: 100%;
   max-width: 330px;
