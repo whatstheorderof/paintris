@@ -1,7 +1,7 @@
 // Themes, puzzle levels, and persistent progression (localStorage).
 
 import { P } from "./engine";
-import type { PackId } from "./sfx";
+import type { PackId, AmbienceId } from "./sfx";
 
 export interface Theme {
   id: string;
@@ -60,6 +60,42 @@ export const THEMES: Theme[] = [
     border: "#241d4a", glow: "rgba(90,120,255,0.3)",
     bgTop: [18, 14, 44], bgBot: [7, 5, 18],
   },
+  {
+    id: "sand", name: "Desert Sand", cost: 250, light: true,
+    page: "#efe3cf", ink: "#4a3a26", overlay: "rgba(249,240,225,0.88)",
+    border: "#dcc9a6", glow: "rgba(190,140,70,0.18)",
+    bgTop: [250, 241, 224], bgBot: [238, 224, 196],
+  },
+  {
+    id: "lavender", name: "Lavender Wash", cost: 300, light: true,
+    page: "#e9e4f3", ink: "#3a3050", overlay: "rgba(245,242,252,0.88)",
+    border: "#cfc6e4", glow: "rgba(130,100,210,0.2)",
+    bgTop: [247, 244, 253], bgBot: [232, 226, 245],
+  },
+  {
+    id: "mint", name: "Sea Glass", cost: 350, light: true,
+    page: "#dfeeea", ink: "#25423c", overlay: "rgba(240,250,247,0.88)",
+    border: "#bcd9d1", glow: "rgba(60,170,150,0.2)",
+    bgTop: [242, 251, 248], bgBot: [223, 240, 234],
+  },
+  {
+    id: "forest", name: "Forest Floor", cost: 450, light: false,
+    page: "#0e1a13", ink: "#dcecdf", overlay: "rgba(12,24,17,0.86)",
+    border: "#1f3a2a", glow: "rgba(60,200,120,0.22)",
+    bgTop: [24, 44, 32], bgBot: [10, 20, 14],
+  },
+  {
+    id: "ocean", name: "Deep Ocean", cost: 500, light: false,
+    page: "#04141c", ink: "#d8eef5", overlay: "rgba(4,20,28,0.86)",
+    border: "#12384a", glow: "rgba(40,170,220,0.26)",
+    bgTop: [12, 46, 62], bgBot: [4, 16, 24],
+  },
+  {
+    id: "ember", name: "Ember", cost: 600, light: false,
+    page: "#1a0c08", ink: "#ffe2d2", overlay: "rgba(26,12,8,0.86)",
+    border: "#4a2016", glow: "rgba(255,110,50,0.28)",
+    bgTop: [56, 24, 16], bgBot: [18, 8, 6],
+  },
 ];
 
 export interface PuzzleDef {
@@ -115,6 +151,7 @@ export interface SaveData {
   puzzlesDone: number[];
   sound: boolean; // kept so older saves still round-trip
   soundPack: PackId;
+  ambience: AmbienceId; // background bed, independent of the pack
   reducedMotion: boolean; // calmer splashes and sparks
 }
 
@@ -158,6 +195,7 @@ export function defaultSave(): SaveData {
     puzzlesDone: [],
     sound: true,
     soundPack: "studio",
+    ambience: "off",
     reducedMotion: false,
   };
 }
@@ -171,6 +209,7 @@ export function loadSave(): SaveData {
     const save: SaveData = { ...base, ...JSON.parse(raw) };
     // saves from before sound packs only had an on/off flag
     if (!save.soundPack) save.soundPack = save.sound === false ? "off" : "studio";
+    if (!save.ambience) save.ambience = "off";
     // Saves from before the score board only kept a single number per mode;
     // seed the table from those so old bests still show up.
     for (const [key, score] of Object.entries(save.best ?? {})) {

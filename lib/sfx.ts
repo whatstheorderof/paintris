@@ -3,6 +3,17 @@
 
 export type PackId = "studio" | "zen" | "off";
 
+/** Background ambience, layered under whatever the sound pack is doing. */
+export type AmbienceId = "off" | "waves" | "rain" | "forest" | "night";
+
+export const AMBIENCES: { id: AmbienceId; name: string; blurb: string }[] = [
+  { id: "off", name: "None", blurb: "just the game" },
+  { id: "waves", name: "Beach", blurb: "slow surf, rolling in" },
+  { id: "rain", name: "Rainfall", blurb: "steady rain on leaves" },
+  { id: "forest", name: "Rainforest", blurb: "wind and distant birds" },
+  { id: "night", name: "Night Field", blurb: "crickets and low air" },
+];
+
 export const PACKS: { id: PackId; name: string; blurb: string }[] = [
   { id: "studio", name: "Paint Studio", blurb: "wet splats and pops" },
   { id: "zen", name: "Zen Garden", blurb: "wind chimes · soft and slow" },
@@ -18,6 +29,8 @@ export class Sfx {
   private master: GainNode | null = null;
   private verb: ConvolverNode | null = null;
   private drone: { osc: OscillatorNode[]; gain: GainNode } | null = null;
+  private amb: { gain: GainNode; stop: () => void } | null = null;
+  private ambId: AmbienceId = "off";
   pack: PackId = "studio";
 
   get muted() {
@@ -25,7 +38,7 @@ export class Sfx {
   }
 
   ensure() {
-    if (this.muted) return;
+    // Build the graph even with the pack off — ambience is independent of it.
     if (!this.ctx) {
       this.ctx = new AudioContext();
       this.master = this.ctx.createGain();
@@ -49,8 +62,199 @@ export class Sfx {
   }
 
   resume() {
-    if (this.muted) return;
     this.ensure();
+  }
+
+  /** Long buffer of noise, looped. Long enough that the seam is inaudible. */
+  private noiseLoop(brown: boolean): AudioBufferSourceNode {
+    const ctx = this.ctx!;
+    const len = ctx.sampleRate * 9;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      if (brown) {
+        last = (last + 0.02 * w) / 1.02;
+        d[i] = last * 3.2;
+      } else {
+        d[i] = w;
+      }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    return src;
+  }
+
+  /** A short bird call: a rising then falling whistle. */
+  private birdCall(at: number) {
+    const ctx = this.ctx;
+    if (!ctx || !this.amb) return;
+    const t = ctx.currentTime + at;
+    const f0 = 1700 + Math.random() * 1600;
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f0 * (1.25 + Math.random() * 0.5), t + 0.05);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.8, t + 0.13);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.045, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
+    o.connect(g).connect(this.amb.gain);
+    o.start(t);
+    o.stop(t + 0.21);
+  }
+
+  /** A cricket: a fast burst of clicks around 4kHz. */
+  private cricket(at: number) {
+    const ctx = this.ctx;
+    if (!ctx || !this.amb) return;
+    const t0 = ctx.currentTime + at;
+    for (let k = 0; k < 4; k++) {
+      const t = t0 + k * 0.035;
+      const o = ctx.createOscillator();
+      o.type = "square";
+      o.frequency.value = 3900 + Math.random() * 500;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.016, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
+      o.connect(g).connect(this.amb.gain);
+      o.start(t);
+      o.stop(t + 0.03);
+    }
+  }
+
+  get ambience() {
+    return this.ambId;
+  }
+
+  /** Swap the background bed. Everything is synthesised — no audio files. */
+  setAmbient(id: AmbienceId) {
+    this.ambId = id;
+    if (this.amb) {
+      const old = this.amb;
+      this.amb = null;
+      const t = this.ctx ? this.ctx.currentTime : 0;
+      old.gain.gain.cancelScheduledValues(t);
+      old.gain.gain.setValueAtTime(old.gain.gain.value, t);
+      old.gain.gain.linearRampToValueAtTime(0, t + 0.8);
+      setTimeout(() => old.stop(), 1000);
+    }
+    if (id === "off") return;
+    this.ensure();
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.master);
+    const started: { stop(): void }[] = [];
+    const timers: number[] = [];
+    const stop = () => {
+      for (const s of started) { try { s.stop(); } catch { /* already stopped */ } }
+      for (const t of timers) clearInterval(t);
+      gain.disconnect();
+    };
+    this.amb = { gain, stop };
+
+    if (id === "waves") {
+      // brown noise under a slow swell, with brighter foam on the peaks
+      const src = this.noiseLoop(true);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 520;
+      const swell = ctx.createGain();
+      swell.gain.value = 0.55;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.075; // ~13s between waves
+      const lfoAmt = ctx.createGain();
+      lfoAmt.gain.value = 0.42;
+      lfo.connect(lfoAmt).connect(swell.gain);
+      src.connect(lp).connect(swell).connect(gain);
+      const foam = this.noiseLoop(false);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 2600;
+      const foamGain = ctx.createGain();
+      foamGain.gain.value = 0.05;
+      const foamLfo = ctx.createGain();
+      foamLfo.gain.value = 0.05;
+      lfo.connect(foamLfo).connect(foamGain.gain);
+      foam.connect(hp).connect(foamGain).connect(gain);
+      src.start(); foam.start(); lfo.start();
+      started.push(src, foam, lfo);
+    } else if (id === "rain") {
+      const src = this.noiseLoop(false);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 900;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 7000;
+      const body = ctx.createGain();
+      body.gain.value = 0.5;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.13;
+      const lfoAmt = ctx.createGain();
+      lfoAmt.gain.value = 0.12;
+      lfo.connect(lfoAmt).connect(body.gain);
+      src.connect(hp).connect(lp).connect(body).connect(gain);
+      // low rumble underneath so it isn't all hiss
+      const rumble = this.noiseLoop(true);
+      const rlp = ctx.createBiquadFilter();
+      rlp.type = "lowpass";
+      rlp.frequency.value = 300;
+      const rg = ctx.createGain();
+      rg.gain.value = 0.22;
+      rumble.connect(rlp).connect(rg).connect(gain);
+      src.start(); rumble.start(); lfo.start();
+      started.push(src, rumble, lfo);
+    } else if (id === "forest") {
+      const src = this.noiseLoop(true);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 700;
+      bp.Q.value = 0.6;
+      const wind = ctx.createGain();
+      wind.gain.value = 0.5;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.055;
+      const lfoAmt = ctx.createGain();
+      lfoAmt.gain.value = 0.35;
+      lfo.connect(lfoAmt).connect(wind.gain);
+      src.connect(bp).connect(wind).connect(gain);
+      src.start(); lfo.start();
+      started.push(src, lfo);
+      // birds, scheduled a few seconds ahead at a time
+      timers.push(
+        window.setInterval(() => {
+          if (!this.amb) return;
+          const n = Math.random() < 0.55 ? 1 + ((Math.random() * 2) | 0) : 0;
+          for (let k = 0; k < n; k++) this.birdCall(Math.random() * 3);
+        }, 3200)
+      );
+    } else if (id === "night") {
+      const src = this.noiseLoop(true);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 240;
+      const air = ctx.createGain();
+      air.gain.value = 0.5;
+      src.connect(lp).connect(air).connect(gain);
+      src.start();
+      started.push(src);
+      timers.push(
+        window.setInterval(() => {
+          if (!this.amb) return;
+          for (let k = 0; k < 2 + ((Math.random() * 3) | 0); k++) this.cricket(Math.random() * 2.4);
+        }, 2500)
+      );
+    }
+
+    gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 2.5);
   }
 
   private impulse(seconds: number): AudioBuffer {

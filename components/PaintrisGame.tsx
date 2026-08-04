@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { COLS, ROWS, B, FALL_BASE, Engine, P, RGB, COLOR_NAMES, type EngineOpts, type Piece } from "@/lib/engine";
 import { createPixiRenderer, type PaintRenderer } from "@/lib/pixiRenderer";
-import { Sfx, PACKS, type PackId } from "@/lib/sfx";
+import { Sfx, PACKS, AMBIENCES, type PackId, type AmbienceId } from "@/lib/sfx";
 import {
   THEMES, PUZZLES, SCORE_TABS, TABLE_SIZE, defaultSave, loadSave, persistSave,
   dailySeed, dailyKey, qualifies, withScore,
@@ -123,6 +123,14 @@ export default function PaintrisGame() {
     sfx.setAmbience(save.soundPack === "zen" && screenRef.current === "play");
     prevPack.current = save.soundPack;
   }, [save.soundPack]);
+
+  // The background bed runs independently of the pack, so it keeps playing
+  // even with game sounds off.
+  useEffect(() => {
+    const sfx = sfxRef.current;
+    if (save.ambience !== "off") sfx.ensure();
+    if (sfx.ambience !== save.ambience) sfx.setAmbient(save.ambience);
+  }, [save.ambience]);
 
   const setScreen = (s: Screen) => {
     screenRef.current = s;
@@ -624,7 +632,7 @@ export default function PaintrisGame() {
 
   return (
     <div
-      className={`wrap${theme.light ? " light" : ""}`}
+      className={`wrap${theme.light ? " light" : ""}${playing ? "" : " menus"}`}
       style={{ background: theme.page, color: theme.ink }}
     >
       <div className="board" style={{ borderColor: theme.border, boxShadow: `0 0 60px ${theme.glow}` }}>
@@ -635,8 +643,20 @@ export default function PaintrisGame() {
         {playing && paused && (
           <div className="overlay" style={{ background: theme.overlay }}>
             <h1 className="title small">PAUSED</h1>
-            <p className="tag">the paint is waiting for you</p>
             <button className="play" onClick={resume}>RESUME</button>
+            {/* the side panel is hidden on phones, so the reference lives here */}
+            <div className="rules-sheet">
+              <h4 className="rule-head">CONTROLS</h4>
+              <ul className="keylist">
+                <li><span className="keys"><kbd>←</kbd><kbd>→</kbd></span> move</li>
+                <li><span className="keys"><kbd>↑</kbd></span> rotate</li>
+                <li><span className="keys"><kbd>↓</kbd></span> soft drop</li>
+                <li><span className="keys"><kbd>space</kbd></span> slam down</li>
+                <li><span className="keys"><kbd>C</kbd></span> hold piece</li>
+              </ul>
+              <h4 className="rule-head">HOW TO SCORE</h4>
+              {scoringRules}
+            </div>
             <button className="play ghost" onClick={() => { resume(); endGameRef.current("end"); }}>
               END SESSION
             </button>
@@ -682,18 +702,10 @@ export default function PaintrisGame() {
               </button>
             </div>
             <div className="menu-secondary">
-              <button className="side-btn wide" onClick={() => setScreen("rules")}>
-                📖 HOW TO PLAY<small>scoring, chains and mixing</small>
-              </button>
-              <button className="side-btn wide" onClick={() => setScreen("scores")}>
-                🏆 HIGH SCORES<small>every mode&apos;s hall of fame</small>
-              </button>
-              <button className="side-btn" onClick={() => setScreen("themes")}>
-                🎨 CANVAS<small>change background</small>
-              </button>
-              <button className="side-btn" onClick={() => setScreen("settings")}>
-                ⚙ SETTINGS<small>{PACKS.find((p) => p.id === save.soundPack)?.name.toLowerCase()}</small>
-              </button>
+              <button className="side-btn" onClick={() => setScreen("rules")}>📖 HOW TO PLAY</button>
+              <button className="side-btn" onClick={() => setScreen("scores")}>🏆 SCORES</button>
+              <button className="side-btn" onClick={() => setScreen("themes")}>🎨 CANVAS</button>
+              <button className="side-btn" onClick={() => setScreen("settings")}>⚙ SETTINGS</button>
             </div>
             <a className="credit" href="https://zaney.dev" target="_blank" rel="noopener noreferrer">
               a game by zaney.dev
@@ -785,6 +797,21 @@ export default function PaintrisGame() {
                     >
                       <span className="pack-name">{p.name}</span>
                       <small>{p.blurb}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="setting-block">
+                <span className="setting-name">🌿 Background</span>
+                <div className="pack-list">
+                  {AMBIENCES.map((a) => (
+                    <button
+                      key={a.id}
+                      className={`pack${save.ambience === a.id ? " on" : ""}`}
+                      onClick={() => updateSave((prev) => ({ ...prev, ambience: a.id as AmbienceId }))}
+                    >
+                      <span className="pack-name">{a.name}</span>
+                      <small>{a.blurb}</small>
                     </button>
                   ))}
                 </div>

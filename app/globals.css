@@ -197,6 +197,18 @@ body {
 
 .side-btn.wide { grid-column: 1 / -1; }
 
+/* compact form used on the menu: icon and label, no description line */
+.menu-secondary .side-btn {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 10px 8px;
+  justify-content: center;
+  text-align: center;
+}
+
 .side-btn {
   font: inherit;
   font-size: 13px;
@@ -775,6 +787,10 @@ kbd {
     width: auto !important;
     max-width: 94vw;
   }
+  /* Off the play screen the panel is just dead weight on a phone — hide it
+     and give the whole height to the menu so nothing has to scroll. */
+  .wrap.menus .panel { display: none; }
+  .wrap.menus .board canvas { height: min(88dvh, 880px) !important; }
   .wrap { gap: 12px; padding: 10px; }
   .panel { width: min(94vw, 440px); flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
   /* touch controls replace the keyboard legend on small screens */
