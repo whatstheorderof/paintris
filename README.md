@@ -43,9 +43,12 @@ Colours blend where they touch and the blend spreads through them, so a mixed
 patch can grow big enough to pop on its own — purple, green and orange all
 score in their own right.
 
-Sound comes in packs: **Paint Studio** for wet splats, or **Zen Garden**, which
-swaps every voice for pentatonic wind chimes over a soft drone and pairs well
-with Zen mode and the **Calm motion** setting.
+Sound comes in packs: **Zen Garden** (pentatonic wind chimes, the default),
+**Paint Drips** (thick resonant drops), or **Paint Studio** for wet splats.
+Underneath runs a separate background bed — Night Field, Day Field, Beach,
+Rainfall or Rainforest — which layers with whichever pack you pick, or plays on
+its own with sound off. All of it is synthesised; there are no audio files.
+Pair it with the **Calm motion** setting for a slower, quieter canvas.
 
 Colours mix where they touch:
 

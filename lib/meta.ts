@@ -194,8 +194,9 @@ export function defaultSave(): SaveData {
     scores: {},
     puzzlesDone: [],
     sound: true,
-    soundPack: "studio",
-    ambience: "off",
+    // Default to the calm pairing — that's the mood the game is going for.
+    soundPack: "zen",
+    ambience: "night",
     reducedMotion: false,
   };
 }
@@ -208,8 +209,9 @@ export function loadSave(): SaveData {
     if (!raw) return base;
     const save: SaveData = { ...base, ...JSON.parse(raw) };
     // saves from before sound packs only had an on/off flag
-    if (!save.soundPack) save.soundPack = save.sound === false ? "off" : "studio";
-    if (!save.ambience) save.ambience = "off";
+    // Saves predating packs only had an on/off flag; carry that intent over.
+    if (!save.soundPack) save.soundPack = save.sound === false ? "off" : "zen";
+    if (!save.ambience) save.ambience = "night";
     // Saves from before the score board only kept a single number per mode;
     // seed the table from those so old bests still show up.
     for (const [key, score] of Object.entries(save.best ?? {})) {

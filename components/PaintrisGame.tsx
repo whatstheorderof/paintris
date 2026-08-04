@@ -802,7 +802,7 @@ export default function PaintrisGame() {
                 </div>
               </div>
               <div className="setting-block">
-                <span className="setting-name">🌿 Background</span>
+                <span className="setting-name">🎵 Background music</span>
                 <div className="pack-list">
                   {AMBIENCES.map((a) => (
                     <button

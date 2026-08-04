@@ -1,22 +1,24 @@
 // Sound packs. Everything is synthesised — no audio files — so a pack is
 // really a set of voices for the same four events.
 
-export type PackId = "studio" | "zen" | "off";
+export type PackId = "studio" | "zen" | "drips" | "off";
 
 /** Background ambience, layered under whatever the sound pack is doing. */
-export type AmbienceId = "off" | "waves" | "rain" | "forest" | "night";
+export type AmbienceId = "off" | "waves" | "rain" | "forest" | "night" | "day";
 
 export const AMBIENCES: { id: AmbienceId; name: string; blurb: string }[] = [
-  { id: "off", name: "None", blurb: "just the game" },
+  { id: "night", name: "Night Field", blurb: "crickets and low air" },
+  { id: "day", name: "Day Field", blurb: "warm breeze and songbirds" },
   { id: "waves", name: "Beach", blurb: "slow surf, rolling in" },
   { id: "rain", name: "Rainfall", blurb: "steady rain on leaves" },
   { id: "forest", name: "Rainforest", blurb: "wind and distant birds" },
-  { id: "night", name: "Night Field", blurb: "crickets and low air" },
+  { id: "off", name: "None", blurb: "just the game" },
 ];
 
 export const PACKS: { id: PackId; name: string; blurb: string }[] = [
-  { id: "studio", name: "Paint Studio", blurb: "wet splats and pops" },
   { id: "zen", name: "Zen Garden", blurb: "wind chimes · soft and slow" },
+  { id: "drips", name: "Paint Drips", blurb: "thick drops into a tin" },
+  { id: "studio", name: "Paint Studio", blurb: "wet splats and pops" },
   { id: "off", name: "Silent", blurb: "no sound at all" },
 ];
 
@@ -236,6 +238,39 @@ export class Sfx {
           for (let k = 0; k < n; k++) this.birdCall(Math.random() * 3);
         }, 3200)
       );
+    } else if (id === "day") {
+      // open meadow: a lighter, brighter breeze than the rainforest bed
+      const src = this.noiseLoop(true);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 1100;
+      bp.Q.value = 0.45;
+      const breeze = ctx.createGain();
+      breeze.gain.value = 0.34;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.09;
+      const lfoAmt = ctx.createGain();
+      lfoAmt.gain.value = 0.2;
+      lfo.connect(lfoAmt).connect(breeze.gain);
+      src.connect(bp).connect(breeze).connect(gain);
+      // a soft warm bed underneath so it doesn't read as pure hiss
+      const warm = this.noiseLoop(true);
+      const wlp = ctx.createBiquadFilter();
+      wlp.type = "lowpass";
+      wlp.frequency.value = 340;
+      const wg = ctx.createGain();
+      wg.gain.value = 0.3;
+      warm.connect(wlp).connect(wg).connect(gain);
+      src.start(); warm.start(); lfo.start();
+      started.push(src, warm, lfo);
+      // songbirds: busier and brighter than the rainforest
+      timers.push(
+        window.setInterval(() => {
+          if (!this.amb) return;
+          const n = 1 + ((Math.random() * 3) | 0);
+          for (let k = 0; k < n; k++) this.birdCall(Math.random() * 2.2);
+        }, 2400)
+      );
     } else if (id === "night") {
       const src = this.noiseLoop(true);
       const lp = ctx.createBiquadFilter();
@@ -315,11 +350,35 @@ export class Sfx {
     return PENTATONIC[Math.max(0, Math.min(PENTATONIC.length - 1, i))];
   }
 
+  /** A thick drop landing in a tin: a resonant plip that falls in pitch. */
+  private drip(freq: number, at: number, gain = 0.2) {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const t = ctx.currentTime + at;
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(freq * 2.6, t);
+    o.frequency.exponentialRampToValueAtTime(freq, t + 0.055);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = freq * 1.8;
+    bp.Q.value = 3.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(bp).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.36);
+  }
+
   land() {
     if (this.muted || !this.ctx) return;
     if (this.pack === "zen") {
       // one soft chime, randomly placed in the scale
       this.chimeNote(this.note((Math.random() * PENTATONIC.length) | 0), 0, 0.16, 2.8);
+    } else if (this.pack === "drips") {
+      this.drip(210 + Math.random() * 190, 0, 0.18);
     } else {
       this.noise(0.15, 900, 0.25);
     }
@@ -329,6 +388,9 @@ export class Sfx {
     if (this.muted || !this.ctx) return;
     if (this.pack === "zen") {
       this.chimeNote(PENTATONIC[0] / 2, 0, 0.3, 5.5); // low gong
+    } else if (this.pack === "drips") {
+      this.noise(0.45, 400, 0.3); // the splash
+      this.drip(90, 0.02, 0.3); // and the deep plop under it
     } else {
       this.noise(0.5, 250, 0.5);
     }
@@ -341,6 +403,11 @@ export class Sfx {
     if (this.pack === "zen") {
       for (let k = 0; k < n; k++) {
         this.chimeNote(this.note(k), k * 0.16, 0.15, 3.6);
+      }
+    } else if (this.pack === "drips") {
+      // a run of drops falling faster and higher
+      for (let k = 0; k < n; k++) {
+        this.drip(240 * Math.pow(1.18, k), k * 0.11, 0.17);
       }
     } else {
       const ctx = this.ctx;
@@ -362,6 +429,7 @@ export class Sfx {
     if (this.muted || !this.ctx) return;
     for (let k = 0; k < 4; k++) {
       if (this.pack === "zen") this.chimeNote(this.note(k * 2), k * 0.22, 0.18, 4.5);
+      else if (this.pack === "drips") this.drip(200 * Math.pow(1.26, k), k * 0.14, 0.2);
       else this.noise(0.12, 1400 + k * 300, 0.16);
     }
   }
